@@ -19,6 +19,24 @@ A Claude Code plugin for structured business UI design workflows — auditing, r
 /plugin install /path/to/biz-ui-forge-plugin
 ```
 
+```
+ # Clone and copy the skill folder
+  git clone
+  https://github.com/YOUR_USERNAME/biz-ui-forge-plugin.git
+  /tmp/biz-ui-forge
+  cp -r /tmp/biz-ui-forge/skills/biz-ui-forge
+  YOUR_PROJECT/.claude/skills/biz-ui-forge
+
+  Option 3: Git Submodule
+
+  # Inside your project
+  git submodule add
+  https://github.com/YOUR_USERNAME/biz-ui-forge-plugin.git
+  .claude/plugins/biz-ui-forge
+
+  To update later: git submodule update --remote
+```
+
 ### From GitHub
 
 ```bash

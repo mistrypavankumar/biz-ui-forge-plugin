@@ -1,225 +1,204 @@
 ---
 name: biz-ui-forge
-description: modern business ui design skill for auditing, redesigning, building, fixing, and prototyping enterprise interfaces. use when asked to review a business ui, make an existing page feel less generic, create a new operational screen, produce html mockups, or generate a single-file mui prototype that maps closely to production next.js and mui code.
+description: design and implement polished enterprise ui for react, next.js, and mui applications. use when chatgpt is asked to create senior-level mockups from product requirements, redesign an existing business screen, fix a ui defect, or implement a mockup into existing mui code while understanding the current component tree and updating child components when needed. especially use when the user wants the mockup to feel like a senior ui/ux designer made it, or wants the implementation to feel like a senior frontend developer preserved logic, reused existing components, and matched the mockup closely.
 ---
 
 # Biz UI Forge
 
 ## Overview
 
-Use this skill to turn business application UI work into a structured design workflow instead of ad hoc component edits. It supports audit-only reviews, full redesigns, greenfield builds, bug fixes, static HTML mockups, and a dedicated single-file MUI prototype mode for users who want production-shaped output without introducing many new files.
+Use this skill for business application UI work that must be both visually strong and implementation-safe.
 
-Read project reality before proposing design changes. Do not redesign from assumptions.
+Role split:
+- In **mockup** mode, act like a **senior UI/UX designer**.
+- In **implement** mode, act like a **senior frontend developer**.
+- In **audit**, **redesign**, and **fix** modes, combine product judgment with safe production-minded frontend execution.
 
-## Operating Modes
+Read project reality before changing design. Do not redesign from assumptions.
 
-Choose exactly one mode per request.
+## Mandatory: Use Sequential Thinking
 
-| Mode | Trigger | Output |
+**Before every non-trivial decision, use `mcp__modelcontextprotocol-servers-sequentialthinking__sequentialthinking` to reason through it step by step.** This is not optional — it prevents skipping steps, partial implementations, and rushed decisions.
+
+Use sequential thinking for:
+1. **Mode selection** — think through which mode fits the request before committing.
+2. **Zone map construction** — reason through each visible zone, what it contains, and whether it's app-shell or page-specific.
+3. **File ownership tracing** — think through which component file owns each zone before building the file map.
+4. **Phasing decisions** — reason through zone count, priority ordering, and phase boundaries.
+5. **Per-zone implementation** — before writing code for each zone, think through: what the mockup shows, what the existing code does, what MUI components to use, what theme tokens map to the CSS variables, and what props/data are needed.
+6. **Cross-file verification** — after implementation, think through whether all zones are accounted for, props align, and states are covered.
+
+Do not skip sequential thinking to save time. The quality of implementation depends on thinking before coding.
+
+## Mode chooser
+
+Choose exactly one mode.
+
+| Mode | Use when | Output |
 | --- | --- | --- |
-| audit | user asks to assess a component without changing it | report only, no code |
-| redesign | existing component needs modernization or distinctiveness | audit, direction brief, architecture, implementation |
-| build | user describes a new page or workflow | direction brief, architecture, implementation |
-| fix | user reports a visual or logic bug, or shares a screenshot | root cause, safe fix, regression notes |
-| mockup | user wants quick visual options or html concepts | standalone html preview files |
-| mui-prototype | user wants mockup fidelity but in real mui/react form | single tsx file with inline mock data |
-| variant | user wants another concept iteration | new mockup or prototype variant without overwriting previous output |
+| audit | user wants assessment only | report only, no code |
+| redesign | existing component needs modernization without an external mockup | direction brief, layout plan, implementation |
+| build | user describes a new page from requirements only | direction brief, layout plan, implementation |
+| fix | user reports a UI or interaction defect | root cause, safe fix, regression notes |
+| mockup | user wants visual concepts or HTML previews from requirements | standalone HTML mockup |
+| implement | user wants a mockup, screenshot, HTML, or Figma translated into real MUI code | component-tree-aware implementation across the files that own the visible UI |
+| variant | user wants another visual concept without overwriting the prior one | new mockup variant |
 
 Inference rules:
-- Existing component path or pasted component code plus change intent means redesign.
-- Existing component path or pasted code with review-only intent means audit.
-- Screenshot plus bug intent means fix.
-- Requests for options, concepts, or visual exploration mean mockup unless the user explicitly wants MUI.
-- Requests for "same idea but using MUI", "single TSX", "portable into app", or "closer to production" mean mui-prototype.
+- Existing component path or pasted code plus review-only intent means **audit**.
+- Existing component path or pasted code plus modernization intent means **redesign**.
+- Screenshot plus bug intent means **fix**.
+- Requirements-first visual exploration means **mockup** unless the user explicitly asks for production code.
+- Any request to turn a mockup, screenshot, HTML, or Figma design into MUI/React means **implement**.
+- If a visual zone belongs to a child component, table row, card, modal, tab panel, or sibling module, still stay in **implement** and update the necessary files. Do not force a parent-only implementation.
 
-## Read First
+## Non-negotiable rules
 
-Always read only the files that matter for the target component.
+1. Read only the files that matter: target component, immediate child components that own visible zones, relevant types, theme files, and any project style guide.
+2. Reuse existing project components before creating new ones.
+3. Preserve business logic, data fetching, state management, handlers, and data contracts unless the user explicitly asks to change them.
+4. Use semantic MUI theme tokens. Do not hardcode colors, spacing, typography, shadows, or radii when implementing real code.
+5. Match the mockup or visual reference closely. Do not drop visible elements, states, or hierarchy.
+6. Follow the local codebase structure: import grouping, hook order, naming, layout primitives, and export style.
+7. Treat dark mode, hover, focus, loading, empty, error, and disabled states as required quality checks.
+8. When a mockup cannot be matched in the parent file alone, inspect and update the child components that render the missing zones.
 
-1. The component file or files provided.
-2. Key imports that affect layout, child structure, or data loading.
-3. Adjacent types files that define the data shape.
-4. Theme files and design tokens used by the project.
-5. `.claude/lessons-learned.md` if present, to avoid repeating past regressions.
+## Self-Improvement: Hook-Powered Correction Tracking
 
-Do not read the entire codebase. Focus on structure, layout decisions, visual patterns, state handling, and data communication.
+This skill automatically tracks mistakes and evolves its rules over time using a three-layer system.
 
-## Discover Project Theme
+### Layer 1: Auto-Capture (Hook)
 
-Before producing any code output, discover the host project's theme system. Search for these common patterns:
+A `UserPromptSubmit` hook (`.claude/hooks/detect-corrections.sh`) monitors every user message for correction signals (e.g., "no", "not that", "wrong", "you forgot", "again"). When detected:
+- Raw correction text is appended to `corrections-log.jsonl` (machine-readable, never edit manually)
+- A context reminder is injected telling Claude to analyze and log the correction properly
 
-1. **Theme config files** — search for files matching: `theme-config.*`, `theme.*`, `palette.*`, `colors.*`, `tokens.*` in common locations (`src/theme/`, `src/styles/`, `packages/ui/src/theme/`, `src/lib/theme/`).
-2. **Theme overrides** — search for `theme-overrides.*`, `createTheme`, `extendTheme`.
-3. **Typography config** — search for `typography.*` in the theme directory.
-4. **Shadow/elevation tokens** — search for `shadows.*`, `custom-shadows.*`.
-5. **Spacing/dimension tokens** — search for `dimensions.*`, `spacing.*`.
-6. **Design tokens** — search for CSS custom property definitions or design token files.
+### Layer 2: Structured Analysis (Claude)
 
-Read whatever theme files exist. Extract:
-- Available palette colors and their semantic meanings
-- Light/dark mode support and how mode switching works
-- Typography variants (standard and custom)
-- Shadow/elevation tokens
-- Spacing tokens
-- CSS variable configuration
+When the hook fires (or when you recognize a correction even without the hook):
+1. Read `corrections-log.md` — check if the same root cause already exists
+2. If match: increment `count`, update date
+3. If new: add a structured entry at the top with root cause category
+4. Categories: `theme-violation` · `skipped-zone` · `skipped-child` · `skipped-state` · `logic-destroyed` · `wrong-mode` · `wrong-component` · `assumption-error` · `incomplete-phase` · `style-drift` · `framework-leak` · `other`
 
-Use the discovered project tokens. Do not hardcode colors, spacing, typography, shadows, or radii when the request is for real implementation or MUI prototype work.
+### Layer 3: Learned Rules (Distilled)
 
-## Theme-Aware Components (Mandatory)
+`learned-rules.md` contains promoted corrections — **these carry the same weight as non-negotiable rules**. Violating a learned rule is treated as a bug.
 
-Read `references/theme-aware-components.md` before producing any code output. This is enforced across **all code-producing modes** (redesign, build, fix, mui-prototype).
+**Promotion criteria** (any one is sufficient):
+- `count >= 2` in corrections-log.md
+- High severity (caused significant rework)
+- User explicitly says "always do X" or "never do Y"
 
-Key rules:
-- **Every component must render correctly in both light and dark mode** (if the project supports it).
-- Use semantic palette tokens (`text.primary`, `background.paper`, `success.main`), never hex values.
-- Use `theme.vars.palette` (or the project's equivalent) for dynamic/alpha styles.
-- Use the project's actual primary color — do not assume a default.
-- Backgrounds: use the project's surface hierarchy tokens.
-- Shadows: use the project's shadow tokens.
-- Interactive states: use the project's action tokens.
-- Run the dark mode verification checklist from the reference before finalizing.
+**Promotion process** (triggered by user saying "review corrections" or "improve the skill"):
+1. Review all `active` entries in `corrections-log.md`
+2. Propose specific rules for `learned-rules.md` — get user approval
+3. Add approved rules, mark corrections as `[PROMOTED]`
 
-Failure to use theme tokens is a blocking issue — fix before delivering.
+### On session start
 
-## Mode Workflows
+Read these two files before beginning any work:
+1. `learned-rules.md` — mandatory, same weight as non-negotiable rules
+2. `corrections-log.md` — treat `count >= 2` entries as temporary rules even if not yet promoted
+
+## Read first
+
+When these files exist, prioritize them in this order:
+1. **`learned-rules.md`** — mandatory, same authority as non-negotiable rules.
+2. **`corrections-log.md`** — check for active patterns before starting.
+3. The target component or page.
+4. Immediate imported child components that render visible UI.
+5. Adjacent types, query fragments, and constants used by the target UI.
+6. `docs/design/global-style-guide.md`.
+7. Theme files and component overrides.
+
+Do not read the whole repo unless the user explicitly asks for broad exploration.
+
+## Project-aware implementation
+
+Before adding new UI, scan for reusable components in the project's shared UI folders. Prefer existing layout shells, cards, form fields, table wrappers, modals, tabs, banners, loaders, and icon wrappers.
+
+When implementing code, also read:
+- `references/implement-playbook.md`
+- `references/theme-rules.md`
+- `references/mockup-playbook.md` for mockup work
+- `references/review-checklist.md` before finalizing
+
+## Mode instructions
 
 ### Audit
 
-Read `references/audit-framework.md`.
+Report only. No implementation code.
 
-Output the audit only. Do not include implementation code. Preserve the report headings and scoring format from the reference.
+Use this structure:
+1. Context summary
+2. What works
+3. What feels weak or generic
+4. UX risks
+5. Visual hierarchy issues
+6. Interaction/state issues
+7. Prioritized recommendations
+8. Score out of 10
 
 ### Redesign and Build
 
-1. **Analyze the reference structure first.** Read `references/structure-match.md`. Read the target file (for redesign) or a similar existing component (for build). Extract the structural blueprint: directive, import order, type location/naming, component signature, hook order, state approach, layout primitives, sub-component pattern, loading/error/empty handling, export style.
-2. Read `references/design-directions.md`.
-3. Choose one direction only. Do not blend directions.
-4. Produce the direction brief before any code.
-5. Define layout zones in text before coding.
-6. Read `references/mui-implementation.md` before implementation.
-7. Default to production-grade React and TypeScript using MUI patterns that map well to Next.js App Router work.
-8. **Write code that follows the structural blueprint** — same import grouping, same type pattern, same hook order, same layout primitives. The output must look like it belongs in the same codebase.
-9. Include all important states: loading, empty, error, hover, focus, active, disabled.
-10. If the reference has bad patterns (hardcoded colors, missing states), silently improve them while keeping the structural shape.
+1. Inspect the reference structure first.
+2. Produce a short direction brief before code.
+3. Define layout zones in text.
+4. Implement in production-shaped React/TypeScript with MUI.
+5. Use the same structural conventions as the nearby code.
+6. Include key states and accessibility details.
 
 ### Fix
 
-1. **Analyze the file's structure first.** Read `references/structure-match.md`. Extract the structural blueprint from the file being fixed: directive, import order, type patterns, component signature, hook order, state approach, layout primitives, sub-component style.
-2. Isolate the issue.
-3. If an image is provided, inspect the image first and use it as the visual source of truth.
-4. For UI bugs, trace layout, stacking, responsive bounds, specificity, overflow, and focus behavior.
-5. For logic bugs, trace props, async flow, derived state, and event handling.
-6. **Write the fix following the file's existing conventions** — same indentation, naming style, import patterns, hook order. Do not restructure or reorganize unless the fix requires it.
-7. Implement the safest fix that preserves responsiveness and accessibility.
-8. Document symptom, root cause, and safe regression notes.
-9. Update `.claude/lessons-learned.md` when the project contains it or when the user asks for persistent lessons.
+1. Isolate the symptom.
+2. Trace the real rendering owner of the broken UI.
+3. Apply the smallest safe fix that preserves responsiveness and accessibility.
+4. Explain symptom, root cause, and regression notes.
 
 ### Mockup
 
-Read `references/mockup-html-rules.md`.
+Act like a **senior UI/UX designer**.
 
-This mode is intentionally HTML-first and MUI-shaped rather than true MUI. Use it for fast visual exploration and instant preview.
+Requirements:
+- Create a fresh concept, not a generic MUI default layout.
+- Start from the product requirements, user goals, and workflow pressure.
+- Use strong hierarchy, deliberate spacing, clear density choices, and one memorable visual idea.
+- Produce self-contained HTML using pure HTML, CSS, and JS. No framework dependencies.
+- Keep CSS variables aligned with project tokens or the style guide when provided.
+- Save mockups under `docs/mockups/<ui-name>/` and never overwrite previous variants.
 
-Rules:
-- Output self-contained HTML files.
-- Default to one best-bet concept unless the user explicitly asks for multiple concepts.
-- When generating multiple concepts, vary layout paradigm, data density, action placement, and visual weight.
-- Save to `docs/mockups/<ui-name>/` with sequential concept naming.
-- For `variant`, never overwrite prior concepts.
+### Implement
 
-### MUI Prototype
+Act like a **senior frontend developer**.
 
-Read both `references/mui-implementation.md` and `references/mui-prototype-mode.md`.
+Use `references/implement-playbook.md`.
 
-Use this mode when the user wants prototype speed but also wants the result to look and feel like real MUI application code.
+Core behavior:
+- Treat the visual reference as the visual source of truth.
+- Treat the existing codebase as the structural source of truth.
+- **Skip app-shell zones** (sidebar, topbar, breadcrumb, global nav) — these already exist in the layout. Focus only on page-specific content.
+- **Phase large mockups** — if the mockup has 7+ page-specific zones, split into phases (structure → secondary content → overlays). Complete each phase fully. Emit a zone progress checklist after each phase so follow-up runs can resume.
+- **Check for prior progress** — before starting, look for `docs/design/[feature]-zone-progress.md`. If it exists, resume from the first pending zone instead of starting over.
+- Inspect the parent component and the child components that actually render the visible zones.
+- Update any child component, sibling presentational module, shared cell renderer, card, modal, or tab panel when that file owns part of the design.
+- Keep logic intact while replacing layout and styling.
+- If a child component needs a new prop to support the mockup, update both the child props and the parent call site.
+- If a visual requirement spans multiple files, implement across those files in one coordinated pass instead of stopping at the parent.
+- If required data is missing from the current types or query, explicitly flag the gap instead of inventing data.
+- **Complete each zone fully before moving to the next** — a half-implemented zone is worse than a missing one.
 
-Rules:
-- Produce a single `.tsx` file by default.
-- Keep mock data, helper functions, and small local subcomponents in the same file.
-- Prefer only imports that are already common in the host app: `@mui/material`, existing icon wrapper, and existing project utilities.
-- Do not add new packages unless the user explicitly asks and the project clearly already uses them.
-- If icons are needed, prefer existing project icon wrappers or inline SVG. Use `@mui/icons-material` only when the app already includes it.
-- Keep the output portable into a Next.js route or component file.
+## Deliverable order
 
-## Deliverable Order
-
-Use this order unless the mode explicitly says otherwise:
-
-1. Context and direction.
-2. Layout architecture.
-3. Implementation or audit output.
-4. Design notes, fix notes, or next-step handoff.
-
-Mode-specific notes:
-- Audit stops after the report and scores.
-- Fix swaps direction with root cause analysis.
-- Mockup summarizes the saved concepts and their differences.
-- MUI prototype explains the single-file choices and how to split it later if needed.
-
-## Interaction and Quality Bar
-
-Across all non-audit modes:
-- Avoid generic default MUI layouts.
-- Use clear hierarchy for page title, section title, labels, values, metrics, and actions.
-- Use semantic colors for state, not primary everywhere.
-- Avoid divider-heavy layouts when surface banding or whitespace is clearer.
-- Use visible hover and focus states.
-- Ensure icon-only buttons have accessible labels.
-- Ensure destructive actions have confirmation and recovery paths.
-- Never use placeholder-only labels in forms.
-
-## Output Expectations
-
-### For audit
-- Report only.
-- Use the exact headings from the audit framework.
-- Include the score line.
-
-### For redesign and build
-- Full React and TypeScript code.
-- MUI-oriented layout primitives and theme usage.
-- Production-grade component structure.
-
-### For fix
-- Concrete code changes.
-- Clear explanation of why the fix is safe.
-
-### For mockup
-- HTML files that can be opened directly in a browser.
-- Tailwind CDN only, per the mockup reference.
-
-### For mui-prototype
-- One TSX file unless the user explicitly asks for a multi-file extraction.
-- Inline mock data is allowed and expected.
-- Local helper renderers are allowed in the same file.
-- Minimal dependencies.
-
-## Single-File MUI Prototype Guidance
-
-A single-file MUI prototype is acceptable when the goal is speed, reviewability, and production adjacency. Keep all of these in the same file when useful:
-- mock dataset
-- section config arrays
-- local state
-- tiny presentational helpers
-- small dialog or drawer subcomponents
-
-Split into multiple files only when the user asks for production extraction or when a single file would materially reduce clarity.
+Use this order unless the mode says otherwise:
+1. Context and chosen direction
+2. Zone map or layout architecture
+3. Audit or implementation
+4. Final notes and verification summary
 
 ## Constraints
 
-- Read relevant source files first.
-- Prefer server-shaped data flow and production-safe architecture when writing real implementation code.
-- Use tokens and references from the host project whenever they are available.
-- Do not invent missing data shape details when type files are present.
-- Do not silently blend mockup HTML rules into MUI prototype mode; keep those modes distinct.
-- Do not overwrite prior variants.
-
-## References
-
-- `references/audit-framework.md`
-- `references/design-directions.md`
-- `references/mockup-html-rules.md`
-- `references/mui-implementation.md`
-- `references/mui-prototype-mode.md`
-- `references/theme-aware-components.md`
-- `references/structure-match.md`
+- Do not invent hidden project conventions.
+- Do not flatten distinctive mockup structure into generic stacked cards unless the mockup truly shows that.
+- Do not silently ignore child-owned UI while claiming the mockup was implemented.
+- Do not rewrite business logic just to make styling easier.

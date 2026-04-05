@@ -27,4 +27,62 @@ Add new entries at the top:
 - **Status**: active | promoted | obsolete
 -->
 
-<!-- No corrections logged yet. -->
+### IMPL-004 — Duplicated UI block instead of extracting a shared component
+- **Date**: 2026-04-03
+- **Mode**: implement
+- **What happened**: When creating `ProfileBusinessUnits` (modeled after `ProfileRoles`), first copy-pasted only the 60-line user identity banner as a `UserIdentityBanner` component — but missed the bigger picture: the entire assign modal pattern (CreateEditDialogModal + banner + instruction + form slot) was identical. User had to correct twice — first for the banner, then for the full modal.
+- **User correction**: (1) "why created again … create component of that and use that everywhere" (2) "why you created only userIdentityBanner, create separate assign modal which should be reusable and then use that accordingly in both"
+- **Root cause**: `assumption-error` — Extracted the smallest visible duplication (banner) instead of stepping back to identify the full scope of the duplicated pattern. When two components share an identical modal structure that differs only in title/subtitle/instruction/form-content, the entire modal is the reusable unit, not just one inner zone.
+- **Correct behavior**: When told "same as X", identify the **largest reusable boundary** — not just the first obvious block. Ask: "what is the full repeated structure, and what are the only things that vary?" Extract the full pattern as a component with props for the varying parts. In this case: `AssignModal` with props for `title`, `subTitle`, `instruction`, and `children` (the form).
+- **Count**: 2
+- **Status**: active
+
+### IMPL-003 — Created new component instead of following existing pattern when told "same as X"
+- **Date**: 2026-04-03
+- **Mode**: fix
+- **What happened**: User asked for BusinessUnit + button to open create modal "same as we did for users". Instead of reading how Users modal is wired in global-modals (self-contained, owns its own form state), created a separate wrapper component and later put inline form state in global-modals. The existing `RoleModal` and `UserNewEditModal` are self-contained — they own their form state, mutations, and submit logic internally. BusinessUnitModal should have followed the same pattern.
+- **User correction**: "no need to create a new we need to use global-modal" + "it did same but created new instead of seeing users modal how it is implemented"
+- **Root cause**: `assumption-error` — Did not read the reference implementation (Users/Roles modal) before building. When user says "same as X", the first step must be reading X's implementation, not assuming the pattern.
+- **Correct behavior**: When told "same as X", always read X's implementation first. For global-modals integration, modals must be self-contained (own form state, mutations, submit logic). The parent (global-modals) only passes `open`, `onCloseAction`, `actionType`, `title`.
+- **Count**: 1
+- **Status**: active
+
+### TS-001 — TypeScript errors left after UI implementation
+- **Date**: 2026-04-02
+- **Mode**: fix
+- **What happened**: After creating/modifying UI components (change-log-ag-grid-table.tsx and user-profile-view.tsx), TypeScript errors were left unfixed — AG Grid `cellStyle` type widening caused `CellStyle` incompatibility, and an unused `ActionButton` import remained.
+- **User correction**: "also learn while creating any ui make sure all ts fixed"
+- **Root cause**: `incomplete-phase` — implemented the UI changes but did not run type-check before presenting the work as complete. User had to report the TS errors.
+- **Correct behavior**: After any UI creation or modification, always run `pnpm --filter <pkg> type-check` on affected packages and fix all errors before considering the work done. Common AG Grid pitfall: `cellStyle` objects in array literals need `as CellStyle` assertions to prevent TypeScript union widening.
+- **Count**: 1
+- **Status**: promoted → LR-003
+
+### IMPL-002 — Incomplete mockup implementation: missed visual details across multiple zones
+- **Date**: 2026-04-02
+- **Mode**: implement
+- **What happened**: When implementing the v2 profile mockup, multiple visual details were wrong: role names rendered in ALL CAPS instead of title case, app chips stacked vertically instead of inline, chip text was uppercase, role badge missing star icon, count badge positioned wrong, buttons used wrong variant/icon, table had extra left eye column not in mockup, header had icon box not in mockup.
+- **User correction**: "this is what we have but i want exact same as in the mockup" + "learn this that when i ask to implement mockup then always implement whatever is present in mockup"
+- **Root cause**: `style-drift` — implemented structural layout correctly but didn't pixel-diff every visual element (text casing, icon choices, chip styles, layout direction, button variants, badge placement) against the mockup. Treated the mockup as a rough guide instead of an exact spec.
+- **Correct behavior**: Before submitting, visually diff EVERY element in the mockup against the code: text casing/transforms, icon choices, chip/badge styles, layout direction (row vs wrap), spacing, button variants (outlined vs contained), color tokens, column layout. If the mockup shows title-case but data is uppercase, add a formatter. If mockup shows inline chips, don't allow wrapping. Match it exactly.
+- **Count**: 3
+- **Status**: promoted → LR-002
+
+### STYLE-001 — Failed to auto-format files after editing, causing import order and spacing lint errors
+- **Date**: 2026-04-02
+- **Mode**: fix
+- **What happened**: After editing user-profile-view.tsx, manually rearranged imports to fix lint errors but got the ordering wrong multiple times (type vs value import order, spacing between groups, member sort inside named imports). Each manual attempt introduced new lint errors.
+- **User correction**: "after writing code make sure to format code using eslint, that too only on files which you touch"
+- **Root cause**: `style-drift` — tried to manually match ESLint import ordering rules instead of running the linter's auto-fix.
+- **Correct behavior**: After every file edit, run `pnpm eslint --fix <touched-file>` to let ESLint handle import sorting, spacing, and formatting automatically. Only target the specific files you changed.
+- **Count**: 1
+- **Status**: promoted → LR-001
+
+### IMPL-001 — Kept wrapper modal that conflicts with mockup layout
+- **Date**: 2026-04-01
+- **Mode**: implement
+- **What happened**: Used CreateEditDialogModal as the wrapper when implementing the v2-hero mockup. This added its own header bar (title + close), footer, and DialogContent padding — creating a double-header that doesn't match the mockup's integrated banner design.
+- **User correction**: "still not same as mockup avoid create-edit-dialog modal"
+- **Root cause**: `assumption-error` — assumed the existing modal wrapper should always be preserved. When a mockup designs its own header/close/footer, the wrapper's chrome conflicts.
+- **Correct behavior**: When a mockup has its own header/banner/close/footer that differs structurally from CreateEditDialogModal, use a raw MUI Dialog instead. Replicate permission and loading logic manually.
+- **Count**: 1
+- **Status**: active

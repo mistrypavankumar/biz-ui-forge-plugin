@@ -2,18 +2,22 @@
 
 Reference for `/biz-ui-forge` audit and redesign modes.
 
+---
+
 ## What to Read
 
-For the component or components being audited, read:
-1. The component file or files provided.
-2. Key imports, especially child components that affect layout and any data-fetching hooks.
-3. Adjacent `types/` files to understand the data shape.
+For the component(s) being audited, read:
+1. The component file(s) provided
+2. Key imports — especially any child components that affect layout, and any data-fetching hooks
+3. Any adjacent `types/` files to understand the data shape
 
-Do not read the entire codebase. Focus on structure, layout decisions, visual patterns, data presentation, and interaction states.
+Do not read the entire codebase. Focus on: structure, layout decisions, visual patterns, data presentation, and interaction states.
+
+---
 
 ## Audit Report Format
 
-```md
+```
 ## Audit: <ComponentName>
 
 ### What Works
@@ -37,65 +41,72 @@ Do not read the entire codebase. Focus on structure, layout decisions, visual pa
 - ...
 ```
 
+---
+
 ## Scoring
 
 Rate each dimension 1–5 after the qualitative sections:
 
 | Dimension | 1 | 3 | 5 |
 |-----------|---|---|---|
-| Visual Identity | Indistinguishable from MUI default | Some intentional choices | Clear, ownable aesthetic |
-| Layout Architecture | No zone hierarchy | Rough zones but inconsistent | Clear header/content/action hierarchy |
-| Interaction Quality | No hover or focus or loading states | Partial states | Full state coverage |
-| Data Communication | Labels and values indistinguishable | Some hierarchy | Clear label and value contrast, semantic color |
-| Consistency | Patterns differ across sections | Mostly consistent | Single coherent visual language |
-| Accessibility | No ARIA, poor contrast, no keyboard nav | Partial accessibility | ARIA labels, visible focus rings, keyboard navigable |
-| Forms and Feedback | Placeholder-only labels, no error states | Some feedback | Visible labels, inline errors, loading states, success confirmation |
+| **Visual Identity** | Indistinguishable from MUI default | Some intentional choices | Clear, ownable aesthetic |
+| **Layout Architecture** | No zone hierarchy | Rough zones but inconsistent | Clear header/content/action hierarchy |
+| **Interaction Quality** | No hover/focus/loading states | Partial states | Full state coverage (hover, focus, loading, disabled, active) |
+| **Data Communication** | Labels and values indistinguishable | Some hierarchy | Clear label/value contrast, semantic color |
+| **Consistency** | Patterns differ across sections | Mostly consistent | Single coherent visual language |
+| **Accessibility** | No ARIA, poor contrast, no keyboard nav | Partial a11y; some contrast issues | ARIA labels, 4.5:1 contrast, visible focus rings, keyboard-navigable |
+| **Forms & Feedback** | Placeholder-only labels, no error states | Some feedback, labels present | Visible labels, inline errors, loading states, success confirmation |
 
-Use this score line format:
-
-```md
+Example output:
+```
 Scores: Visual Identity 2/5 · Layout Architecture 3/5 · Interaction 1/5 · Data 2/5 · Consistency 3/5 · Accessibility 2/5 · Forms 1/5
 ```
 
-## What Generic Looks Like
+---
 
-### Visual and Layout
-- `Typography variant="h4"` or `variant="h6"` as page or section title instead of project-specific variants.
-- Inline `sx={{ fontSize, fontWeight }}` on Typography instead of a semantic variant.
-- Every card at identical elevation.
-- Divider between every section.
-- Status displayed as plain text.
-- Action buttons always bottom-right of cards.
-- Breadcrumb, title, and actions all in one flat stack.
-- Same text size for labels and values.
-- Primary color used for every accent element.
+## What "Generic" Looks Like (Checklist)
 
-### Interaction and States
-- No hover states on interactive cards or rows.
-- No loading skeleton.
-- Empty state is blank space.
-- Disabled elements look identical to enabled ones.
-- No transition property.
-- No visible focus ring.
+Use this to identify problems quickly:
 
-### Accessibility
-- Icon-only buttons lack `aria-label`.
-- Color is the sole meaning carrier.
-- Inputs have no visible label.
-- Error messages only appear at the top of a form.
-- Interactive targets are too small.
-- Text contrast is too weak against the background.
+**Visual / Layout**
+- [ ] `Typography variant="h4"` or `variant="h6"` as page/section title (should use `pageTitle`/`sectionTitle`)
+- [ ] `sx={{ fontSize, fontWeight }}` inline on Typography (should use variant)
+- [ ] Every card at identical elevation (all `elevation={1}` or no shadow variation)
+- [ ] `<Divider />` between every section (surface banding is better)
+- [ ] Status displayed as plain text (not color-coded chip or status rail)
+- [ ] Action buttons always bottom-right of cards (not floating, not contextual)
+- [ ] Breadcrumb + title + buttons all in one flat `Stack` (no header zone separation)
+- [ ] Same `body1` size for both field labels and field values
+- [ ] Primary color used for every accent element (no semantic color application)
 
-### Forms and Feedback
-- No loading indicator on async submit.
-- Errors are vague and offer no recovery path.
-- No confirmation before destructive actions.
+**Interaction / States**
+- [ ] No hover states on interactive cards or rows
+- [ ] No loading skeleton — content flashes in
+- [ ] Empty states = blank space (no ghost CTA)
+- [ ] Disabled elements look identical to enabled (no opacity change or cursor shift)
+- [ ] Hover transitions instant — no `transition` property
+- [ ] No visible focus ring — keyboard users can't navigate
 
-## Audit vs Redesign
+**Accessibility**
+- [ ] Icon-only buttons have no `aria-label`
+- [ ] Color is the sole meaning carrier (e.g. red/green without icon or text label)
+- [ ] Form inputs have no visible `<label>` — placeholder used as label
+- [ ] Error messages only at top of form — not inline near the field
+- [ ] Interactive elements below 44×44px effective target area
+- [ ] Text contrast fails 4.5:1 (common: gray label on paper background)
 
-| Mode | Output | Code |
-|------|--------|------|
-| audit | report only | no |
-| redesign | audit, then direction brief, architecture, and new implementation | yes |
+**Forms & Feedback**
+- [ ] No loading indicator on async submit — button just does nothing
+- [ ] Error message says "Invalid" with no recovery path
+- [ ] No confirmation before destructive actions (delete, cancel, void)
 
-In redesign mode, finish the audit first. Do not jump into direction or implementation before the audit is complete.
+---
+
+## Audit vs. Redesign Distinction
+
+| Mode | Output | Code? |
+|------|--------|-------|
+| `audit` | Report only — no implementation changes | No |
+| `redesign` | Audit → Direction Brief → Architecture → New implementation | Yes — full rewrite |
+
+In `redesign` mode, the audit report is produced first. Do not start the direction brief until the audit is complete. Do not start code until the direction brief is locked.

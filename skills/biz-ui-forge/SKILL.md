@@ -1,6 +1,6 @@
 ---
 name: biz-ui-forge
-description: design and implement polished enterprise ui for react, next.js, and mui applications. use when chatgpt is asked to create senior-level mockups from product requirements, redesign an existing business screen, fix a ui defect, or implement a mockup into existing mui code while understanding the current component tree and updating child components when needed. especially use when the user wants the mockup to feel like a senior ui/ux designer made it, or wants the implementation to feel like a senior frontend developer preserved logic, reused existing components, and matched the mockup closely.
+description: design and implement polished enterprise ui for react, next.js, and mui applications. use when chatgpt is asked to create senior-level mockups from product requirements, redesign an existing business screen, fix a ui defect, or implement a mockup into existing mui code while understanding the current component tree and updating child components when needed. especially use when the user wants the mockup to feel like a senior ui/ux designer made it, or wants the implementation to feel like a senior frontend developer preserved logic, reused existing components, and matched the mockup closely. also use when user wants quick ui improvement suggestions (--suggest) or a quality checklist pass/fail gate (--check) on existing components.
 ---
 
 # Biz UI Forge
@@ -12,6 +12,8 @@ Use this skill for business application UI work that must be both visually stron
 Role split:
 - In **mockup** mode, act like a **senior UI/UX designer**.
 - In **implement** mode, act like a **senior frontend developer**.
+- In **suggest** mode, act like a **senior UI consultant** giving quick actionable improvements.
+- In **check** mode, act like a **QA engineer** running a pass/fail quality gate.
 - In **audit**, **redesign**, and **fix** modes, combine product judgment with safe production-minded frontend execution.
 
 Read project reality before changing design. Do not redesign from assumptions.
@@ -37,14 +39,20 @@ Choose exactly one mode.
 | Mode | Use when | Output |
 | --- | --- | --- |
 | audit | user wants assessment only | report only, no code |
+| suggest | user wants quick, actionable UI improvement ideas (`--suggest`) | prioritized suggestion list with rationale, no code |
+| check | user wants logic correctness review with risk levels (`--check`) | risk-rated findings with suggested fixes, no code changes |
 | redesign | existing component needs modernization without an external mockup | direction brief, layout plan, implementation |
 | build | user describes a new page from requirements only | direction brief, layout plan, implementation |
 | fix | user reports a UI or interaction defect | root cause, safe fix, regression notes |
 | mockup | user wants visual concepts or HTML previews from requirements | standalone HTML mockup |
 | implement | user wants a mockup, screenshot, HTML, or Figma translated into real MUI code | component-tree-aware implementation across the files that own the visible UI |
 | variant | user wants another visual concept without overwriting the prior one | new mockup variant |
+| learn | user wants to add, list, or remove learned rules (`--learn`) | updated `learned-rules.md` |
 
 Inference rules:
+- `--learn` flag or "add rule" / "learn this" / "new rule" means **learn**.
+- `--suggest` flag or "suggest improvements" / "what would you improve" means **suggest**.
+- `--check` flag or "check logic" / "is this correct" / "review for bugs" means **check**.
 - Existing component path or pasted code plus review-only intent means **audit**.
 - Existing component path or pasted code plus modernization intent means **redesign**.
 - Screenshot plus bug intent means **fix**.
@@ -140,6 +148,75 @@ Use this structure:
 7. Prioritized recommendations
 8. Score out of 10
 
+### Suggest
+
+Quick, actionable improvement ideas. No code output.
+
+1. Read the target component and its immediate children.
+2. Read `docs/design/global-style-guide.md` and theme files for context.
+3. Produce a prioritized list of **5–10 concrete suggestions**, each with:
+   - **What**: one-line description of the change
+   - **Why**: the UX or visual problem it solves
+   - **How**: brief description of the MUI approach (component, token, pattern)
+   - **Impact**: low / medium / high
+4. Group suggestions by category: hierarchy, density, color/contrast, interaction states, accessibility, consistency.
+5. Do not produce code. The user decides which suggestions to pursue.
+
+### Check
+
+Logic correctness review. No code changes — report only with risk levels and suggested fixes.
+
+Read the target component, its children, hooks, handlers, data fetching, state management, and type definitions. Check whether the logic is correct, safe, and handles edge cases.
+
+**What to check:**
+
+1. **Data flow** — props drilled correctly, no stale closures, no missing dependencies in `useEffect`/`useMemo`/`useCallback`
+2. **State management** — correct initial state, no race conditions, no redundant state that can derive from props/other state
+3. **Conditional rendering** — guards handle `null`/`undefined`/empty arrays, no flash of wrong UI
+4. **Event handlers** — correct arguments, no missing `preventDefault`, no unintended re-renders from inline arrow functions in hot paths
+5. **API/GraphQL integration** — loading/error/empty states handled, no missing refetch after mutation, no stale cache reads
+6. **Type safety** — no `as any` casts hiding real issues, optional chaining where needed, discriminated unions handled exhaustively
+7. **Side effects** — cleanup in `useEffect`, no memory leaks from subscriptions/timers, no effects running on every render unnecessarily
+8. **Permissions/auth** — permission checks present where needed, no UI that shows actions the user can't perform
+9. **Edge cases** — zero items, single item, maximum items, rapid clicks, concurrent requests, network failure
+10. **Business logic** — status transitions correct, calculations accurate, filters/sorts match expected behavior
+
+**Risk levels:**
+- **CRITICAL** — will cause crash, data loss, or security issue
+- **HIGH** — incorrect behavior visible to users, wrong data displayed or submitted
+- **MEDIUM** — works most of the time but fails on edge cases or under specific conditions
+- **LOW** — code smell or minor issue unlikely to cause visible problems
+
+**Output format per finding:**
+```
+[CRITICAL] Missing null guard on viewData.items — crash when entity has no items
+  → Line: 82
+  → Fix: Add optional chaining `viewData?.items?.map(...)` or early return if !viewData
+
+[HIGH] Mutation onCompleted doesn't refetch list query — stale data after save
+  → Line: 145
+  → Fix: Add `refetchQueries: [{ query: GET_SALES_ORDERS }]` to mutation options
+
+[MEDIUM] useEffect missing `filters` dependency — filter changes won't trigger re-fetch
+  → Line: 63
+  → Fix: Add `filters` to dependency array, or move filter logic into the effect
+
+[LOW] Inline arrow in onClick creates new reference each render — minor perf in large list
+  → Line: 201
+  → Fix: Extract handler with useCallback if list > 50 items
+```
+
+**Summary format:**
+```
+Result: 2 CRITICAL · 1 HIGH · 3 MEDIUM · 1 LOW
+Verdict: BLOCKED — fix CRITICAL and HIGH before shipping
+```
+
+Verdicts:
+- **CLEAR** — no CRITICAL or HIGH findings
+- **CAUTION** — no CRITICAL, but has HIGH findings worth reviewing
+- **BLOCKED** — has CRITICAL findings that must be fixed
+
 ### Redesign and Build
 
 1. Inspect the reference structure first.
@@ -187,6 +264,45 @@ Core behavior:
 - If a visual requirement spans multiple files, implement across those files in one coordinated pass instead of stopping at the parent.
 - If required data is missing from the current types or query, explicitly flag the gap instead of inventing data.
 - **Complete each zone fully before moving to the next** — a half-implemented zone is worse than a missing one.
+
+### Learn
+
+Manage learned rules directly. No code changes — only updates `learned-rules.md`.
+
+**Sub-commands** (passed as arguments after `--learn`):
+
+| Usage | Action |
+| --- | --- |
+| `--learn <rule description>` | Add a new learned rule |
+| `--learn list` | List all current learned rules with their IDs |
+| `--learn remove <LR-ID>` | Remove a learned rule by ID |
+
+**Adding a rule** (`--learn <rule description>`):
+
+1. Read `learned-rules.md` to find the current highest `LR-XXX` ID.
+2. Determine the next ID (e.g., if `LR-006` is the highest, use `LR-007`).
+3. Classify the rule into a category: `theme-violation` · `skipped-zone` · `skipped-child` · `skipped-state` · `logic-destroyed` · `wrong-mode` · `wrong-component` · `assumption-error` · `incomplete-phase` · `style-drift` · `framework-leak` · `other`.
+4. Write the new rule at the top of the rules list (after the header), following this format:
+   ```
+   ### LR-XXX — Short title
+   - **Promoted from**: User explicit instruction (YYYY-MM-DD)
+   - **Category**: <category>
+   - **Rule**: <clear, actionable rule statement>
+   - **Why**: <reason the rule exists — what goes wrong without it>
+   ```
+5. Confirm to the user what was added, showing the ID and title.
+
+**Listing rules** (`--learn list`):
+
+1. Read `learned-rules.md`.
+2. Display a concise table of all rules: `| ID | Title | Category |`.
+
+**Removing a rule** (`--learn remove LR-XXX`):
+
+1. Read `learned-rules.md`.
+2. Find the rule block matching the given ID.
+3. Remove the entire `### LR-XXX` block (heading through to the next heading or end of file).
+4. Confirm removal to the user.
 
 ## Deliverable order
 

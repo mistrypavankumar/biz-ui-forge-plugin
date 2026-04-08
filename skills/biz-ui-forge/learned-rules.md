@@ -6,6 +6,24 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 
 ---
 
+### LR-009 — Mandatory quality gate: eslint fix + type-check before done
+- **Promoted from**: User explicit instruction (2026-04-07)
+- **Category**: incomplete-phase
+- **Rule**: Before declaring any fix/implement task complete, run both quality checks on all touched files: 1) `pnpm eslint --fix <touched-files>` to fix formatting, import order, and indentation. 2) `cd apps/scm && npx tsc --noEmit --project tsconfig.json 2>&1 | grep "<touched-file>"` to verify zero type errors. If either check fails, fix the issues before responding. Never present work as done with outstanding lint warnings or TS errors in modified files.
+- **Why**: Multiple rounds of corrections were needed because lint/formatting and type errors were left in touched files. The user expects clean code on every response — not a follow-up "should I fix the lint?" question. This is a hard gate, not optional.
+
+### LR-008 — Remove unused code only in touched files
+- **Promoted from**: User explicit instruction (2026-04-07)
+- **Category**: incomplete-phase
+- **Rule**: When editing a file, check for unused imports, variables, and dead code **only in that file**. If found, remove them as part of the edit. Do not scan or modify files you haven't touched. Unused code cleanup is scoped to touched files only.
+- **Why**: Leaving unused imports/variables in touched files causes lint warnings the user has to clean up later. But modifying untouched files introduces unrelated changes and risks breaking things outside the task scope.
+
+### LR-007 — SSRM tables must use invalidate with router.refresh(), not refetchQueries
+- **Promoted from**: User explicit instruction (2026-04-07)
+- **Category**: logic-destroyed
+- **Rule**: When a page uses `useCustomMutation` and the table is server-side (SSRM via `ServerSideDatasource`), never use `refetchQueries`. Instead, use the `invalidate` option with a callback that calls both `gridApiRef.current?.refreshServerSide({ purge: true })` and `router.refresh()`. Pass `gridApiRef` to `BusinessObjectListViewPage` via `otherProps={{ gridApiRef }}`.
+- **Why**: `refetchQueries` targets Apollo cache queries by document node, but SSRM tables fetch data through `ServerSideDatasource` which bypasses the normal Apollo query cache. Without `router.refresh()` + grid API refresh, the table shows stale data after create/update/delete mutations.
+
 ### LR-006 — Use varied react-icons families, not just Phosphor
 - **Promoted from**: User explicit instruction (2026-04-02)
 - **Category**: style-drift
@@ -24,11 +42,11 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 - **Rule**: After writing or editing any file during UI implementation or bug fix, immediately run `pnpm eslint --fix <touched-files>` without asking the user for permission. This is a mandatory post-edit step, not an optional action that needs approval.
 - **Why**: User repeatedly had to remind to format files. The formatting step should be automatic and silent — never prompt "shall I run eslint?" or wait for confirmation.
 
-### LR-003 — Run type-check after every UI change and fix all errors
+### LR-003 — Run type-check only on changed files, fix errors, no permission needed
 - **Promoted from**: TS-001 (2026-04-02), user explicit instruction
 - **Category**: incomplete-phase
-- **Rule**: After creating or modifying any UI component, run `pnpm --filter <pkg> type-check` on the affected package(s) and fix all TypeScript errors before presenting work as complete. Common pitfalls: unused imports, AG Grid `cellStyle` needing `as CellStyle` assertion in array literals, missing type imports.
-- **Why**: User had to manually report TS errors that should have been caught before delivery. UI work is not done until it compiles clean.
+- **Rule**: After creating or modifying any UI component, run `cd apps/scm && npx tsc --noEmit --project tsconfig.json 2>&1 | grep "<changed-file>"` to type-check scoped to the project but filtered to only show errors in files you touched. Fix all TypeScript errors before presenting work as complete. Do this automatically without asking the user for permission — same as eslint --fix. Common pitfalls: unused imports, AG Grid `cellStyle` needing `as CellStyle` assertion in array literals, missing type imports.
+- **Why**: Full project type-check is slow and may surface unrelated errors. Bare `tsc --noEmit <file>` fails on TSX without project config. User wants scoped checks on changed files only, run silently without approval. UI work is not done until it compiles clean.
 
 ### LR-002 — Pixel-match every mockup detail during implement mode
 - **Promoted from**: IMPL-002 (2026-04-02), user explicit instruction

@@ -13,6 +13,16 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 
 ## Corrections
 
+### IMPL-005 — Replaced AG Grid with custom MUI table when implementing mockup
+- **Date**: 2026-04-09
+- **Mode**: implement
+- **What happened**: When implementing the "Assigned Users" mockup for the role detail users tab, replaced the existing AG Grid table with a custom MUI Box-based table to match the mockup's visual style. The user corrected this — AG Grid is the standard table component in this codebase.
+- **User correction**: "use aggrid table"
+- **Root cause**: `assumption-error` — Assumed the mockup's clean table look required a custom MUI table. Should have kept AG Grid and used custom cellRenderers to achieve the same visual style. AG Grid is the mandatory table component in this project.
+- **Correct behavior**: When implementing a table mockup, always use AG Grid with custom cellRenderers to match the visual design. Never replace AG Grid with a custom MUI table. The mockup defines the look; AG Grid + cellRenderers is the implementation tool.
+- **Count**: 1
+- **Status**: active
+
 <!-- 
 Add new entries at the top:
 

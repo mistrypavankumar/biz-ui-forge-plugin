@@ -6,6 +6,18 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 
 ---
 
+### LR-011 — Fix unused variables in all touched and affected files before declaring done
+- **Promoted from**: User explicit instruction (2026-04-10)
+- **Category**: incomplete-phase
+- **Rule**: When editing a file causes a variable, import, or destructured prop to become unused (e.g., removing the only usage of an import, or removing a component that consumed a prop), fix the unused reference immediately — do not leave it for the user to discover via a failing build. Fixes: remove unused imports, prefix unused but required props/params with `_` (e.g., `currentUser: _currentUser`), delete unused local variables. Also check files **outside your direct edits** that may break due to cascading changes (e.g., a shared component whose consumer changed). Run the type-check gate (LR-009) on all potentially affected packages, not just the files you directly edited.
+- **Why**: TS strict mode treats unused declarations as build errors (`TS6133`). A single leftover unused variable in any package breaks the entire build. This happened when removing a component consumer left an unused prop in a shared package file, which was only caught when the user tried to build.
+
+### LR-010 — Create separate skeleton components for loading states
+- **Promoted from**: User explicit instruction (2026-04-09)
+- **Category**: incomplete-phase
+- **Rule**: When building or modifying a component that has a loading state (data fetching, permissions gating, hydration), create a dedicated skeleton component in a separate file within the same folder (e.g., `nav-skeleton.tsx` alongside `nav-floating.tsx`, or `sales-order-detail-skeleton.tsx` alongside `sales-order-detail-view.tsx`). The skeleton must mirror the real component's layout structure (same dimensions, spacing, border-radius, zones) using MUI `Skeleton` components. Only create skeletons where a loading state actually exists — do not add them preemptively to components that render synchronously.
+- **Why**: Generic spinners or mismatched skeletons cause layout shift and look unpolished. Keeping the skeleton in a separate file in the same folder makes it easy to find and update when the real component's layout changes. Inline skeleton logic clutters the main component.
+
 ### LR-009 — Mandatory quality gate: eslint fix + type-check before done
 - **Promoted from**: User explicit instruction (2026-04-07)
 - **Category**: incomplete-phase

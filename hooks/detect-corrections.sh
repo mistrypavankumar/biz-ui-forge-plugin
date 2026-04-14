@@ -15,7 +15,7 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 # Group 1: Direct corrections
 # Group 2: Redo requests
 # Group 3: Frustration / repeated mistake signals
-PATTERN='(^no[,. !]|not that|wrong |you (forgot|missed|skipped|dropped|ignored)|i (said|asked|told you|meant)|do it again|try again|redo |again[,.]? (you|it|the)|still (wrong|broken|missing|not)|same (mistake|issue|problem|bug)|how many times|i already|stop doing|don.t (do|use|add|hardcode|skip))'
+PATTERN='(^no[,. !]|not that|wrong |you (forgot|missed|skipped|dropped|ignored)|i (said|asked|told you|meant)|do it again|try again|redo |again[,.]? (you|it|the)|still (wrong|broken|missing|not)|same (mistake|issue|problem|bug)|how many times|i already|stop doing|don.t (do|use|add|hardcode|skip)|actually i (want|need|meant)|that.s not (what|how|right)|closer but|almost but|not quite|why (did you|is it|are you)|should (be|have been)|was supposed to|go back to|revert|undo that|remove (that|this|it)|put (it|that) back)'
 
 if echo "$PROMPT" | grep -iqE "$PATTERN"; then
   TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S')

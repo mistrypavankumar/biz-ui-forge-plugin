@@ -13,6 +13,16 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 
 ## Corrections
 
+### IMPL-006 — Used Iconify strings instead of react-icons
+- **Date**: 2026-04-10
+- **Mode**: fix
+- **What happened**: When creating the service-policy-assignment list view and modal, used Iconify string identifiers (`"mingcute:document-fill"`, `"solar:settings-bold-duotone"`, `"solar:target-bold-duotone"`) for icons instead of react-icons components. LR-006 already required using react-icons, but the rule was not specific enough about prohibiting Iconify.
+- **User correction**: "use react icons, also i have mentioned in learn but still why using iconify"
+- **Root cause**: `style-drift` — Defaulted to Iconify strings (which some shared components accept) instead of react-icons JSX components. LR-006 said "use varied react-icons families" but didn't explicitly prohibit Iconify as an alternative.
+- **Correct behavior**: Always use react-icons components. For component props that accept both `iconName` (string) and `icon` (ReactNode), always use the `icon` prop with a react-icons component. Zero Iconify strings in new code.
+- **Count**: 1
+- **Status**: promoted → LR-012
+
 ### IMPL-005 — Replaced AG Grid with custom MUI table when implementing mockup
 - **Date**: 2026-04-09
 - **Mode**: implement
@@ -45,7 +55,7 @@ Add new entries at the top:
 - **Root cause**: `assumption-error` — Extracted the smallest visible duplication (banner) instead of stepping back to identify the full scope of the duplicated pattern. When two components share an identical modal structure that differs only in title/subtitle/instruction/form-content, the entire modal is the reusable unit, not just one inner zone.
 - **Correct behavior**: When told "same as X", identify the **largest reusable boundary** — not just the first obvious block. Ask: "what is the full repeated structure, and what are the only things that vary?" Extract the full pattern as a component with props for the varying parts. In this case: `AssignModal` with props for `title`, `subTitle`, `instruction`, and `children` (the form).
 - **Count**: 2
-- **Status**: active
+- **Status**: promoted → LR-021
 
 ### IMPL-003 — Created new component instead of following existing pattern when told "same as X"
 - **Date**: 2026-04-03

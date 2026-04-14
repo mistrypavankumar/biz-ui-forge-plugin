@@ -50,7 +50,7 @@ Choose exactly one mode.
 | learn | user wants to add, list, or remove learned rules (`--learn`) | updated `learned-rules.md` |
 
 Inference rules:
-- `--learn` flag or "add rule" / "learn this" / "new rule" means **learn**.
+- `--learn` flag or "add rule" / "learn this" / "new rule" / "remember this" means **learn**.
 - `--suggest` flag or "suggest improvements" / "what would you improve" means **suggest**.
 - `--check` flag or "check logic" / "is this correct" / "review for bugs" means **check**.
 - Existing component path or pasted code plus review-only intent means **audit**.
@@ -103,11 +103,35 @@ When the hook fires (or when you recognize a correction even without the hook):
 2. Propose specific rules for `learned-rules.md` — get user approval
 3. Add approved rules, mark corrections as `[PROMOTED]`
 
+### Layer 4: Success Tracking
+
+`successes-log.md` tracks approaches the user approved without pushback. When the user accepts output on the first try (no corrections, no "but"), log a short entry:
+
+```
+### S-XXX — Short title
+- **Date**: YYYY-MM-DD
+- **Mode**: fix | implement | mockup | etc.
+- **What worked**: Brief description of the approach
+- **Why it worked**: What made this the right call
+```
+
+This reinforces good patterns. Review alongside corrections during `--learn review`.
+
 ### On session start
 
-Read these two files before beginning any work:
+Read these files before beginning any work:
 1. `learned-rules.md` — mandatory, same weight as non-negotiable rules
 2. `corrections-log.md` — treat `count >= 2` entries as temporary rules even if not yet promoted
+3. `successes-log.md` — if it exists, note what approaches worked well
+
+### Pre-response self-check
+
+Before presenting any output to the user, scan all applicable learned rules and verify zero violations. This is a hard gate — not optional.
+
+1. Filter `learned-rules.md` to rules tagged with the current mode (or `all` modes)
+2. For each applicable rule, verify the output doesn't violate it
+3. If a violation is found, fix it before responding — don't present and apologize later
+4. Pay extra attention to rules with `count >= 2` in corrections-log.md
 
 ## Read first
 
@@ -148,6 +172,12 @@ Use this structure:
 7. Prioritized recommendations
 8. Score out of 10
 
+**Exit checklist:**
+- [ ] All 8 report sections covered
+- [ ] Score provided
+- [ ] Recommendations prioritized
+- [ ] No code output
+
 ### Suggest
 
 Quick, actionable improvement ideas. No code output.
@@ -161,6 +191,12 @@ Quick, actionable improvement ideas. No code output.
    - **Impact**: low / medium / high
 4. Group suggestions by category: hierarchy, density, color/contrast, interaction states, accessibility, consistency.
 5. Do not produce code. The user decides which suggestions to pursue.
+
+**Exit checklist:**
+- [ ] 5–10 suggestions provided
+- [ ] Each has What / Why / How / Impact
+- [ ] Grouped by category
+- [ ] No code output
 
 ### Check
 
@@ -217,6 +253,12 @@ Verdicts:
 - **CAUTION** — no CRITICAL, but has HIGH findings worth reviewing
 - **BLOCKED** — has CRITICAL findings that must be fixed
 
+**Exit checklist:**
+- [ ] All 10 check categories evaluated
+- [ ] Each finding has risk level, line number, and fix
+- [ ] Summary with verdict provided
+- [ ] No code changes made
+
 ### Redesign and Build
 
 1. Inspect the reference structure first.
@@ -226,12 +268,29 @@ Verdicts:
 5. Use the same structural conventions as the nearby code.
 6. Include key states and accessibility details.
 
+**Exit checklist:**
+- [ ] Direction brief provided before code
+- [ ] Layout zones defined
+- [ ] Theme tokens used (no hardcoded values)
+- [ ] Key states covered (loading, empty, error, hover, disabled)
+- [ ] Existing project components reused
+- [ ] `eslint --fix` ran on touched files
+- [ ] Type-check passed on touched files
+
 ### Fix
 
 1. Isolate the symptom.
 2. Trace the real rendering owner of the broken UI.
 3. Apply the smallest safe fix that preserves responsiveness and accessibility.
 4. Explain symptom, root cause, and regression notes.
+
+**Exit checklist:**
+- [ ] Root cause identified and explained
+- [ ] Fix applied to the correct file (not just the parent)
+- [ ] Regression notes provided
+- [ ] No unused imports/variables left in touched files
+- [ ] `eslint --fix` ran on touched files
+- [ ] Type-check passed on touched files
 
 ### Mockup
 
@@ -244,6 +303,14 @@ Requirements:
 - Produce self-contained HTML using pure HTML, CSS, and JS. No framework dependencies.
 - Keep CSS variables aligned with project tokens or the style guide when provided.
 - Save mockups under `docs/mockups/<ui-name>/` and never overwrite previous variants.
+
+**Exit checklist:**
+- [ ] Saved under `docs/mockups/<ui-name>/`
+- [ ] No emoji icons — SVG or react-icons paths only
+- [ ] CSS vars match project tokens / style guide
+- [ ] Dark mode variant considered
+- [ ] Loading, empty, error states shown or noted
+- [ ] Previous variants not overwritten
 
 ### Implement
 
@@ -265,6 +332,18 @@ Core behavior:
 - If required data is missing from the current types or query, explicitly flag the gap instead of inventing data.
 - **Complete each zone fully before moving to the next** — a half-implemented zone is worse than a missing one.
 
+**Exit checklist:**
+- [ ] All page-specific zones accounted for (app-shell skipped)
+- [ ] Child components updated where they own visible zones
+- [ ] Mockup pixel-matched — text casing, icons, chips, spacing, variants
+- [ ] No hardcoded colors/spacing — theme tokens only
+- [ ] react-icons used (zero Iconify strings)
+- [ ] Loading, empty, error states handled
+- [ ] No unused imports/variables in touched files
+- [ ] `eslint --fix` ran on touched files
+- [ ] Type-check passed on touched files
+- [ ] Zone progress checklist emitted (if phased)
+
 ### Learn
 
 Manage learned rules directly. No code changes — only updates `learned-rules.md`.
@@ -276,26 +355,29 @@ Manage learned rules directly. No code changes — only updates `learned-rules.m
 | `--learn <rule description>` | Add a new learned rule |
 | `--learn list` | List all current learned rules with their IDs |
 | `--learn remove <LR-ID>` | Remove a learned rule by ID |
+| `--learn review` | Audit rules — consolidate duplicates, retire stale ones, promote pending corrections |
 
 **Adding a rule** (`--learn <rule description>`):
 
 1. Read `learned-rules.md` to find the current highest `LR-XXX` ID.
 2. Determine the next ID (e.g., if `LR-006` is the highest, use `LR-007`).
 3. Classify the rule into a category: `theme-violation` · `skipped-zone` · `skipped-child` · `skipped-state` · `logic-destroyed` · `wrong-mode` · `wrong-component` · `assumption-error` · `incomplete-phase` · `style-drift` · `framework-leak` · `other`.
-4. Write the new rule at the top of the rules list (after the header), following this format:
+4. Assign mode tags: which modes does this rule apply to? Use `all` if it applies everywhere, or a comma-separated list like `implement, mockup`.
+5. Write the new rule at the top of the rules list (after the header), following this format:
    ```
    ### LR-XXX — Short title
    - **Promoted from**: User explicit instruction (YYYY-MM-DD)
    - **Category**: <category>
+   - **Modes**: all | <comma-separated modes>
    - **Rule**: <clear, actionable rule statement>
    - **Why**: <reason the rule exists — what goes wrong without it>
    ```
-5. Confirm to the user what was added, showing the ID and title.
+6. Confirm to the user what was added, showing the ID and title.
 
 **Listing rules** (`--learn list`):
 
 1. Read `learned-rules.md`.
-2. Display a concise table of all rules: `| ID | Title | Category |`.
+2. Display a concise table of all rules: `| ID | Title | Category | Modes |`.
 
 **Removing a rule** (`--learn remove LR-XXX`):
 
@@ -303,6 +385,17 @@ Manage learned rules directly. No code changes — only updates `learned-rules.m
 2. Find the rule block matching the given ID.
 3. Remove the entire `### LR-XXX` block (heading through to the next heading or end of file).
 4. Confirm removal to the user.
+
+**Reviewing rules** (`--learn review`):
+
+1. Read `learned-rules.md`, `corrections-log.md`, and `successes-log.md`.
+2. Check for:
+   - **Duplicates**: rules that overlap in intent — propose merging
+   - **Stale rules**: rules about patterns no longer in the codebase — propose retiring
+   - **Pending promotions**: corrections with `count >= 2` not yet in learned-rules — propose promoting
+   - **Missing mode tags**: rules without a `Modes` field — propose adding
+   - **Success reinforcement**: approaches from successes-log that could become positive rules
+3. Present findings as a checklist. Apply only what the user approves.
 
 ## Deliverable order
 

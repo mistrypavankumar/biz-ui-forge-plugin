@@ -30,7 +30,7 @@ Use sequential thinking for:
 5. **Per-zone implementation** — before writing code for each zone, think through: what the mockup shows, what the existing code does, what MUI components to use, what theme tokens map to the CSS variables, and what props/data are needed.
 6. **Cross-file verification** — after implementation, think through whether all zones are accounted for, props align, and states are covered.
 
-Do not skip sequential thinking to save time. The quality of implementation depends on thinking before coding.
+**Skip sequential thinking when the task is trivial** — single-file typo fix, `--learn list`, `--learn remove`, or any task where the entire scope is obvious and fits in one step. Don't burn thinking overhead on a one-liner.
 
 ## Mode chooser
 
@@ -126,12 +126,39 @@ Read these files before beginning any work:
 
 ### Pre-response self-check
 
-Before presenting any output to the user, scan all applicable learned rules and verify zero violations. This is a hard gate — not optional.
+Before presenting any output to the user, run this gate. Not optional — skipping it is a bug.
 
-1. Filter `learned-rules.md` to rules tagged with the current mode (or `all` modes)
-2. For each applicable rule, verify the output doesn't violate it
-3. If a violation is found, fix it before responding — don't present and apologize later
-4. Pay extra attention to rules with `count >= 2` in corrections-log.md
+1. Identify the current mode (fix, implement, mockup, etc.)
+2. Read `learned-rules.md` and filter to rules tagged with this mode or `all`
+3. For each applicable rule, check the output against its **Rule** field. Common checks:
+   - Any Iconify strings or emoji in the code? → swap to react-icons
+   - Any comments that sound AI-generated? → rewrite terse
+   - Did I run eslint + type-check on touched files? → run before responding
+   - Any unused imports/vars left? → remove
+   - Hardcoded colors or `.light` tokens? → check against theme files
+   - `refetchQueries` used with an SSRM table? → switch to invalidate
+   - Mutation response fetching full fragment? → trim to `{ id }`
+   - Mockup elements not pixel-matched? → diff each zone
+   - AG Grid replaced with custom table? → revert to AG Grid + cellRenderers
+4. If any violation found: fix it silently, then re-check
+5. Only present output after zero violations confirmed
+
+### Success logging
+
+After the user accepts output without corrections (no follow-up fix request, no "but", no pushback), log a success entry in `successes-log.md`:
+
+1. Wait for the user's next message after delivering output
+2. If the next message is a new task (not a correction of the current one), the output was accepted
+3. Log it:
+   ```
+   ### S-XXX — Short title
+   - **Date**: YYYY-MM-DD
+   - **Mode**: <current mode>
+   - **What worked**: <brief description of the approach>
+   - **Why it worked**: <what made this the right call>
+   ```
+4. Keep entries short — one success = 4 lines max
+5. During `--learn review`, check if any success pattern should become a positive rule
 
 ## Read first
 
@@ -343,6 +370,22 @@ Core behavior:
 - [ ] `eslint --fix` ran on touched files
 - [ ] Type-check passed on touched files
 - [ ] Zone progress checklist emitted (if phased)
+
+### Variant
+
+Create an alternative visual concept without overwriting the prior one.
+
+1. Read the previous mockup to understand what was already explored.
+2. Identify what to change — layout structure, density, color emphasis, interaction pattern, or visual style.
+3. Produce a new standalone HTML mockup with a distinct approach.
+4. Save under `docs/mockups/<ui-name>/` with an incremented variant name (e.g., `v2.html`, `v3.html`).
+
+**Exit checklist:**
+- [ ] Previous variant not overwritten
+- [ ] Visually distinct from prior variant (not a minor tweak)
+- [ ] Saved with incremented variant name
+- [ ] No emoji icons — SVG paths only
+- [ ] CSS vars match project tokens / style guide
 
 ### Learn
 

@@ -31,7 +31,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 - **Root cause**: `assumption-error` — Assumed the mockup's clean table look required a custom MUI table. Should have kept AG Grid and used custom cellRenderers to achieve the same visual style. AG Grid is the mandatory table component in this project.
 - **Correct behavior**: When implementing a table mockup, always use AG Grid with custom cellRenderers to match the visual design. Never replace AG Grid with a custom MUI table. The mockup defines the look; AG Grid + cellRenderers is the implementation tool.
 - **Count**: 1
-- **Status**: active
+- **Status**: promoted → LR-022
 
 <!-- 
 Add new entries at the top:

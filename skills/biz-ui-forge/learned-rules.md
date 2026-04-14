@@ -6,6 +6,13 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 
 ---
 
+### LR-022 — Always use AG Grid for tables; match mockup visuals via cellRenderers
+- **Promoted from**: IMPL-005 (2026-04-14), high severity
+- **Category**: assumption-error
+- **Modes**: implement, build, redesign
+- **Rule**: AG Grid is the mandatory table component in this project. Never replace it with a custom MUI table, HTML table, or Box-based layout — even if the mockup looks simpler than what AG Grid renders by default. Use custom `cellRenderer` functions to match the mockup's visual style within AG Grid. The mockup defines the look; AG Grid + cellRenderers is the implementation tool.
+- **Why**: Replacing AG Grid with a custom table breaks the project's standard data grid patterns (SSRM, sorting, filtering, column resizing, views). A custom table can't plug into `ServerSideDatasource`, `ViewsManager`, or any grid-level feature. The visual gap between a mockup and AG Grid is always solvable with cellRenderers.
+
 ### LR-021 — Extract the largest reusable boundary, not just the smallest visible duplication
 - **Promoted from**: IMPL-004 (2026-04-14), count >= 2
 - **Category**: assumption-error

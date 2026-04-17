@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__modelcontextprotocol-servers-sequentialthinking__sequentialthinking",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm eslint:*)",
+      "Bash(python3 -c ':*)",
+      "mcp__github__get_file_contents",
+      "mcp__ag-mcp__set_versions",
+      "mcp__ag-mcp__search_docs",
+      "Bash(chmod +x /Users/pavankumarmistry/Developer/daxwell-scm-client/.git/hooks/pre-push)",
+      "Bash(rm /Users/pavankumarmistry/Developer/daxwell-scm-client/.git/hooks/pre-push)",
+      "Bash(git -C /Users/pavankumarmistry/Developer/daxwell-scm-client config core.hooksPath scripts/hooks)",
+      "Bash(curl -s -w \"\\\\n%{http_code}\" http://localhost:3033/api/chats)",
+      "Bash(grep *)",
+      "mcp__ide__getDiagnostics",
+      "Bash(pnpm --filter @daxwell/ui exec eslint --fix packages/ui/src/components/custom-modals/file-manager/file-manager-modal.tsx packages/ui/src/components/custom-modals/file-manager/file-manager-body-parts.tsx)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "modelcontextprotocol-servers-sequentialthinking",
+    "awslabs.core-mcp-server",
+    "github",
+    "exa",
+    "ag-mcp",
+    "mui-mcp",
+    "next-devtools",
+    "auth0",
+    "playwright"
+  ]
+}

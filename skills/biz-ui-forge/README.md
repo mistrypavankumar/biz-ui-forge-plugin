@@ -9,6 +9,7 @@ Enterprise UI skill for Claude Code — design, implement, review, and fix React
 /biz-ui-forge --check <component-path>                  # logic review (no code changes)
 /biz-ui-forge --suggest <component-path>                # quick UI improvement ideas
 /biz-ui-forge <mockup/screenshot> implement into <path> # mockup → production MUI
+/biz-ui-forge --amplify <ask>                           # any Amplify Gen 2 backend task
 /biz-ui-forge --learn <rule>                            # teach it a new rule
 ```
 
@@ -25,6 +26,7 @@ Enterprise UI skill for Claude Code — design, implement, review, and fix React
 | **redesign** | component path + modernization intent | direction brief + implementation |
 | **build** | new page from requirements | direction brief + implementation |
 | **variant** | "another version" / "try a different approach" | new mockup variant |
+| **amplify** | `--amplify` or any Amplify Gen 2 / ampx / Lambda / CDK / Function URL task | scaffold, fix, extend, debug Amplify backend across `amplify/` + root plumbing |
 | **learn** | `--learn` | manage learned rules |
 
 ## Self-Improvement System

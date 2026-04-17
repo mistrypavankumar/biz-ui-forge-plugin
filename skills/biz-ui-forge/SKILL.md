@@ -15,6 +15,7 @@ Role split:
 - In **suggest** mode, act like a **senior UI consultant** giving quick actionable improvements.
 - In **check** mode, act like a **QA engineer** running a pass/fail quality gate.
 - In **audit**, **redesign**, and **fix** modes, combine product judgment with safe production-minded frontend execution.
+- In **amplify** mode (`--amplify`), act like a **senior AWS cloud/backend engineer**: scaffold, fix, extend, and debug AWS Amplify Gen 2 backends (functions, data, auth, storage, CDK extensions) with deep awareness of this repo's pnpm monorepo + standalone-amplify layout.
 
 Read project reality before changing design. Do not redesign from assumptions.
 
@@ -48,6 +49,7 @@ Choose exactly one mode.
 | implement | user wants a mockup, screenshot, HTML, or Figma translated into real MUI code | component-tree-aware implementation across the files that own the visible UI |
 | variant | user wants another visual concept without overwriting the prior one | new mockup variant |
 | learn | user wants to add, list, or remove learned rules (`--learn`) | updated `learned-rules.md` |
+| amplify | user wants AWS Amplify Gen 2 backend work (`--amplify`) — scaffold, fix, extend functions/data/auth/storage, debug sandbox/deploy issues | direction brief, file plan, implementation across `amplify/` + root plumbing, verification commands |
 
 Inference rules:
 - `--learn` flag or "add rule" / "learn this" / "new rule" / "remember this" means **learn**.
@@ -59,6 +61,7 @@ Inference rules:
 - Requirements-first visual exploration means **mockup** unless the user explicitly asks for production code.
 - Any request to turn a mockup, screenshot, HTML, or Figma design into MUI/React means **implement**.
 - If a visual zone belongs to a child component, table row, card, modal, tab panel, or sibling module, still stay in **implement** and update the necessary files. Do not force a parent-only implementation.
+- `--amplify` flag, or any mention of "amplify", "ampx", "amplify gen 2", "defineBackend", "defineFunction", "Function URL", "CDK" in the context of this repo, or any failure/question about `amplify/` folder, `ampx sandbox`, `amplify_outputs.json`, Lambda deploy, Cognito/AppSync scaffolded by Amplify — means **amplify**.
 
 ## Non-negotiable rules
 
@@ -439,6 +442,53 @@ Manage learned rules directly. No code changes — only updates `learned-rules.m
    - **Missing mode tags**: rules without a `Modes` field — propose adding
    - **Success reinforcement**: approaches from successes-log that could become positive rules
 3. Present findings as a checklist. Apply only what the user approves.
+
+### Amplify
+
+Act like a **senior AWS cloud/backend engineer**. Handles any AWS Amplify Gen 2 issue in this repo: scaffolding, sandbox/deploy failures, function bundling, CDK extensions, auth, data/storage, env plumbing.
+
+**Before touching anything, read `references/amplify-playbook.md`.** It documents this repo's non-obvious layout (amplify is a standalone pnpm workspace, not a monorepo member), the exact `.npmrc`/`pnpm-workspace.yaml` invariants, the ampx-from-root invocation pattern, and the classes of errors each misconfiguration produces.
+
+Sub-intents inside amplify mode — pick by what the user is asking:
+
+| Sub-intent | Triggers | Approach |
+| --- | --- | --- |
+| **scaffold** | "set up amplify", "add amplify gen 2", empty `amplify/` folder | Follow playbook §Scaffolding. Do not omit `amplify/pnpm-workspace.yaml` or `.npmrc`. |
+| **add-function** | "add a lambda", "new function for X" | Create `amplify/functions/<name>/{resource.ts,handler.ts}`; wire into `backend.ts`; add CDK extension only if needed (Function URL, streaming, VPC, EventSource). |
+| **stream** | streaming Lambda, SSE, response streaming, daxbot readstream | Function URL + `InvokeMode.RESPONSE_STREAM` + `awslambda.streamifyResponse`. Byte-for-byte passthrough of the upstream body. |
+| **auth** | Auth0 JWT verify, Cognito, authorizer, token check | In-handler JWKS verify (Auth0) or `authType: AWS_IAM`/Cognito (native). Never mix. |
+| **data** | `defineData`, schema, GraphQL, AppSync | `amplify/data/resource.ts` with `a.schema({...})`; wire authorization rules; generate client types via `ampx generate graphql-client-code`. |
+| **storage** | S3, uploads, `defineStorage` | `amplify/storage/resource.ts`; access patterns via `triggers` or authenticated IAM. |
+| **env-plumbing** | "where do vars come from", secrets, `defineFunction` environment | Non-secrets via `environment` (read from shell at deploy). Secrets via `secret('NAME')` + `ampx sandbox secret set`. Document the var in the function's README. |
+| **fix-sandbox** | `ampx sandbox` errors, pnpm errors, `Command "ampx" not found`, `./amplify does not exist`, `is-inside-container`, `NoPackageManagerError`, `strictDepBuilds`, `ERR_PNPM_IGNORED_BUILDS` | Diagnose against the symptom table in `amplify-playbook.md`. Apply the documented fix. Do not invent new ones. |
+| **fix-deploy** | CDK bootstrap errors, `AccessDenied`, role/policy mismatches, `ResourceAlreadyExists`, `CREATE_FAILED` | Read CloudFormation event log; reconcile IAM; `ampx sandbox delete` only with explicit user confirmation. |
+| **fix-runtime** | Lambda returns wrong status, CORS rejects, upstream timeouts, cold-start failures | Check handler code → Function URL CORS config → `defineFunction({ timeoutSeconds, memoryMB })` → VPC if upstream is internal. |
+| **pipeline-deploy** | CI/CD, prod deploy, `ampx pipeline-deploy` | Add Amplify Hosting app or GitHub Action; secrets via Amplify Console env vars; branch mapping. |
+| **outputs-wire** | "how do I use the function URL", `amplify_outputs.json`, `NEXT_PUBLIC_*` | Read `amplify_outputs.json` custom section; surface into `apps/scm/.env.local`. Never hardcode URLs. |
+
+**Approach for every amplify sub-intent:**
+
+1. **Read before changing.** Check `amplify/backend.ts`, `amplify/package.json`, `amplify/.npmrc`, `amplify/pnpm-workspace.yaml`, root `package.json` amplify:* scripts, `Makefile` amplify targets, `amplify_outputs.json` (if deployed). Confirm what exists vs what the user thinks exists.
+2. **Diagnose with the playbook symptom table first.** Most errors in this repo are known-solved. Look there before generating new hypotheses.
+3. **Never destructive without explicit ask.** `ampx sandbox delete` and `rm -rf amplify/.amplify` are destructive — require the user's OK.
+4. **Scope cleanups to `amplify/`.** Never `rm -rf node_modules/` at repo root to recover from an amplify issue — that nukes the 15 workspace projects. `amplify/node_modules`, `amplify/pnpm-lock.yaml`, `amplify/.amplify`, `amplify_outputs.json` are the only paths to touch. `make amplify-reset` is the one-shot.
+5. **Verify every change.** Run the relevant verification (`ampx sandbox --once`, `node amplify/node_modules/.bin/ampx info`, or curl against the Function URL with a real JWT). Don't declare done on a compile-check alone.
+6. **Keep parallel paths aligned.** When adding a new function, update all of: `amplify/backend.ts`, `amplify/functions/<name>/{resource.ts,handler.ts}`, `amplify/README.md` (env var table + sample curl), root `Makefile` if a new target helps, `apps/scm/.env.example` if the frontend consumes an output.
+7. **TypeScript config.** All amplify TS goes through `amplify/tsconfig.json` (`moduleResolution: Bundler`, `types: ["node", "aws-lambda"]`). The root `tsconfig.json` and ESLint config both exclude `amplify/**` on purpose — don't try to unify them.
+8. **Default to Node 20** for Lambda runtime (Amplify Gen 2's most compatible target). Upgrade to 22 only if the user asks.
+
+**Exit checklist:**
+
+- [ ] All changes confined to `amplify/` + the explicit wiring files (root `package.json`, `Makefile`, `.gitignore`, `apps/scm/.env.example`) — no drift into `apps/` or `packages/`
+- [ ] `amplify/pnpm-workspace.yaml` (with `packages: []`), `amplify/.npmrc` (with `node-linker=hoisted`, `strict-dep-builds=false`), and `amplify/package.json` (with `pnpm.onlyBuiltDependencies`) all present
+- [ ] `ampx` invoked from repo root via `./amplify/node_modules/.bin/ampx` with `npm_config_user_agent=pnpm`, never `cd amplify && pnpm exec ampx`
+- [ ] Every new env var documented in `amplify/README.md` and (if frontend-facing) `apps/scm/.env.example`
+- [ ] New functions have a sample curl in `amplify/README.md`
+- [ ] Function URL streaming uses `InvokeMode.RESPONSE_STREAM` + `awslambda.streamifyResponse` pair — never one without the other
+- [ ] Auth pattern stated: in-handler JWT (Auth0) vs AWS_IAM vs Cognito. Not mixed.
+- [ ] No `as any` in handler code; JWT payload extraction uses `typeof x === 'string'` guards
+- [ ] Verification step run and output shown to user (not just "should work")
+- [ ] Destructive commands (`sandbox delete`, wiping deployed stack) only executed after explicit user confirmation in the current turn
 
 ## Deliverable order
 

@@ -6,6 +6,34 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 
 ---
 
+### LR-026 — Prefer dedicated backend queries for counts and aggregations
+- **Promoted from**: User explicit instruction (2026-04-14)
+- **Category**: other
+- **Modes**: implement, fix, build
+- **Rule**: When the frontend needs a count, total, or any aggregation (e.g., total row count for a badge), prefer a dedicated backend query or an existing field from a server response (like `totalRows` from SSRM) over workarounds like fetching rows with `startRow: 1, endRow: 2` just to read `totalRows`. If a dedicated count query doesn't exist, flag it as a backend gap rather than hacking an existing data query to extract metadata. The backend can compute counts and aggregations via SQL far more efficiently than the frontend can infer them from paginated data responses.
+- **Why**: Fetching actual row data (even 1-2 rows) to get a count wastes compute and database load. The backend can run a `COUNT(*)` query orders of magnitude cheaper. Using data queries for metadata also couples the UI to implementation details of the datasource response shape. Dedicated count/aggregation endpoints are the scalable pattern.
+
+### LR-025 — Use Field.LazyAutocomplete for all reference data FK dropdowns
+- **Promoted from**: User explicit instruction (2026-04-14)
+- **Category**: other
+- **Modes**: implement, fix, build
+- **Rule**: When a form field is a foreign key that maps to a `useReferenceData` key, use `Field.LazyAutocomplete` with the `referenceKey` prop instead of manually calling `useReferenceData` + `Field.Autocomplete`. This eliminates boilerplate (query hooks, option types, option prop drilling) and lazy-loads data only when the dropdown is opened. For non-standard shapes (e.g., `packagedProducts` with extra fields), use the `mapOption` prop to normalize to `{ id, name }`.
+- **Why**: Manual `useReferenceData` + `Field.Autocomplete` requires ~20 lines of boilerplate per dropdown (query call, option extraction, type, prop drilling). `Field.LazyAutocomplete` reduces it to one line with `referenceKey`. It also defers the network request until the user actually opens the dropdown — saving bandwidth when users don't interact with every FK field.
+
+### LR-024 — All UI must be responsive; use MUI breakpoints for grids, spacing, and layout
+- **Promoted from**: User explicit instruction (2026-04-14)
+- **Category**: skipped-state
+- **Modes**: implement, fix, build, redesign
+- **Rule**: Every component must work at mobile, tablet, and desktop widths. Use MUI responsive `gridTemplateColumns` (e.g., `{ xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }`), responsive `gap`/`p`/`fontSize` via breakpoint objects, and `flexWrap: 'wrap'` where needed. Fixed-width grids like `repeat(4, 1fr)` without breakpoints are a bug — they overflow on small screens. Check stat card grids, header layouts, button rows, and toolbar content at narrow widths before declaring done.
+- **Why**: The stat card grid used a fixed `repeat(4, 1fr)` which crushed cards at mobile width — labels and icons overlapped. Responsiveness is not optional; it's part of the exit checklist for every code-producing mode.
+
+### LR-023 — Extract repeated UI into shared components in packages/ui
+- **Promoted from**: User explicit instruction (2026-04-14)
+- **Category**: skipped-component
+- **Modes**: implement, fix, build, redesign
+- **Rule**: When the same UI pattern appears in more than one place (e.g., stat cards, page headers, expandable panels), extract it into a shared component under `packages/ui/src/components/` and reuse it from both locations. Don't duplicate the same JSX across files — if two pages render the same card/header/layout, that's a shared component waiting to be created. Props for the varying parts, shared structure in one file.
+- **Why**: Duplicated UI drifts over time — one copy gets fixed, the other doesn't. Shared components in `packages/ui` are the project's canonical location for reusable UI. Keeping them there makes discoverability easy and ensures consistency across pages.
+
 ### LR-022 — Always use AG Grid for tables; match mockup visuals via cellRenderers
 - **Promoted from**: IMPL-005 (2026-04-14), high severity
 - **Category**: assumption-error
@@ -21,11 +49,16 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 - **Why**: Two rounds of corrections were needed because the smallest visible duplication (a banner) was extracted instead of the full shared pattern (an entire assign modal). When the scope of duplication is misjudged, the user has to correct twice — once for the initial miss, once for the correct boundary.
 
 ### LR-020 — Write comments like a developer, not like AI
-- **Promoted from**: User explicit instruction (2026-04-14)
+- **Promoted from**: User explicit instruction (2026-04-14); reinforced 2026-04-17
 - **Category**: style-drift
 - **Modes**: all
-- **Rule**: When writing code comments, keep them terse, practical, and natural — the way a working developer would annotate their own code. Avoid overly formal, verbose, or explanatory phrasing that reads like generated documentation. Good: `// skip if no roles assigned`, `// stable ref — don't recreate on every render`, `// grid needs this for SSRM refresh`. Bad: `// This function handles the case where the user does not have any roles assigned to their account`, `// The following useMemo ensures referential stability of the datasource object`. Comments explain *why*, not *what*, and should sound like shorthand notes between teammates.
-- **Why**: AI-written comments stand out in code review and erode trust. They tend to over-explain obvious code and use phrasing no developer would actually write. Terse, contextual comments blend naturally with the codebase.
+- **Rule**: All comment forms — `//` lines, `/* */` blocks, AND JSDoc `/** */` — must read like notes a working developer writes for themselves: terse, practical, `why` over `what`, no restating the signature. Good: `// skip if no roles assigned`, `// stable ref — don't recreate on every render`, `// grid needs this for SSRM refresh`. Bad (reads as AI): multi-line JSDoc on internal route handlers, "When set, ... Defaults to X" prose on option fields (TS already shows the default), "POST /api/foo — Issues a ..." restatement of what the handler signature says. Specific rules:
+  1. **No JSDoc on internal/private symbols** (route handlers, option interfaces consumed within the same package, local helpers). One `//` line, or nothing at all.
+  2. **JSDoc only for genuinely public library exports** and even then: one short line, not a multi-paragraph description.
+  3. **Never restate the signature**. `// POST /api/auth/chat-token — Issues a short-lived token` is redundant with the `export async function POST()` right below.
+  4. **No "defaults to X" on `Type = 'default-value'` fields** — the default value itself documents it.
+  5. **No "when set, ... falls back to ...". Compress to one clause**: `// direct-to-ELB path (ADR-013)`.
+- **Why**: AI-style verbose JSDoc and multi-line prose comments stand out in code review and erode trust. Rule was originally promoted for `//` comments but later violated in JSDoc form because the exemption wasn't explicit. Now it's explicit: all comment forms, no exceptions.
 
 ### LR-017 — Backwards compatibility not required unless explicitly requested
 - **Promoted from**: User explicit instruction (2026-04-13)
@@ -86,15 +119,16 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 - **Rule**: When building or modifying a component that has a loading state (data fetching, permissions gating, hydration), create a dedicated skeleton component in a separate file within the same folder (e.g., `nav-skeleton.tsx` alongside `nav-floating.tsx`, or `sales-order-detail-skeleton.tsx` alongside `sales-order-detail-view.tsx`). The skeleton must mirror the real component's layout structure (same dimensions, spacing, border-radius, zones) using MUI `Skeleton` components. Only create skeletons where a loading state actually exists — do not add them preemptively to components that render synchronously.
 - **Why**: Generic spinners or mismatched skeletons cause layout shift and look unpolished. Keeping the skeleton in a separate file in the same folder makes it easy to find and update when the real component's layout changes. Inline skeleton logic clutters the main component.
 
-### LR-009 — Mandatory quality gate: eslint fix + type-check before done
-- **Promoted from**: User explicit instruction (2026-04-07), merged with LR-001, LR-003, LR-004
+### LR-009 — Mandatory quality gate: eslint fix + type-check on EVERY edit, no exceptions
+- **Promoted from**: User explicit instruction (2026-04-07), merged with LR-001, LR-003, LR-004. Updated 2026-04-15.
 - **Category**: incomplete-phase
 - **Modes**: implement, fix, redesign, build
-- **Rule**: Before declaring any task complete, run both quality checks automatically (no asking permission):
-  1. `pnpm eslint --fix <touched-files>` — fix formatting, import order, and indentation on only the files you touched. Do not run project-wide commands.
-  2. `cd apps/scm && npx tsc --noEmit --project tsconfig.json 2>&1 | grep "<touched-file>"` — verify zero type errors scoped to changed files.
-  If either check fails, fix the issues before responding. Common pitfalls: unused imports, AG Grid `cellStyle` needing `as CellStyle` assertion, missing type imports, import sort order. Never present work as done with outstanding lint warnings or TS errors.
-- **Why**: Multiple rounds of corrections across LR-001/003/004 were needed because lint, formatting, and type errors were left in touched files. The user expects clean code on every response. This is a hard gate, not optional, and runs silently without prompting.
+- **Rule**: After EVERY file edit — no matter how trivial (even a one-line text change) — run both checks automatically before responding:
+  1. `pnpm eslint --fix <touched-files>` — fix formatting, import order, and indentation on only the files you touched.
+  2. `mcp__ide__getDiagnostics` with the file URI — instant, scoped type-check via the IDE's TypeScript language server. Call once per touched file. If the IDE tool is unavailable, note it explicitly rather than silently skipping.
+  Do NOT run project-wide `tsc --noEmit` — it type-checks the entire project (thousands of files), takes 30-60+ seconds, and is wasteful. If either check finds issues, fix them before responding. Common pitfalls: unused imports, implicit `any` params, AG Grid `cellStyle` needing `as CellStyle` assertion, missing type imports, import sort order, broken import paths after moving/renaming.
+  **No excuses for skipping**: "trivial edit", "just a text change", "only removed a line" are NOT valid reasons to skip. The quality gate runs on every edit, period.
+- **Why**: Repeatedly forgetting to run eslint + type-check leads to broken imports, unused variables, and formatting issues that surface later during build or push. Running these checks is cheap (seconds) and catches problems immediately. Skipping them creates compounding debt.
 
 ### LR-007 — SSRM tables must use invalidate with router.refresh(), not refetchQueries
 - **Promoted from**: User explicit instruction (2026-04-07)

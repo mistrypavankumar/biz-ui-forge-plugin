@@ -58,31 +58,40 @@ Hook (auto-capture) → corrections-log.jsonl (raw)
 ```
 biz-ui-forge/
   SKILL.md              # main skill definition (modes, rules, checklists)
+  README.md             # this file
+  CHANGELOG.md          # skill evolution history
   learned-rules.md      # enforced rules (same weight as non-negotiable rules)
   corrections-log.md    # structured correction history with root causes
   corrections-log.jsonl # raw hook captures (machine-readable, don't edit)
   successes-log.md      # approaches that worked without corrections
   references/           # mode-specific playbooks and checklists
-    implement-playbook.md
-    mockup-playbook.md
-    theme-rules.md
-    review-checklist.md
-    audit-framework.md
-    ...8 more reference docs
+    amplify-playbook.md         # Amplify Gen 2 layout, ampx invocation, symptom table
+    implement-playbook.md       # zone map → file ownership → phased implementation
+    mockup-playbook.md          # mockup construction rules
+    mockup-html-rules.md        # standalone HTML/CSS constraints for mockups
+    theme-rules.md              # MUI theme tokens, alpha values, .main vs .light
+    theme-aware-components.md   # dark-mode safe component patterns
+    review-checklist.md         # pre-submit exit gate
+    audit-framework.md          # audit-mode structure and scoring
+    design-directions.md        # direction-brief shape and examples
+    mui-implementation.md       # MUI-specific implementation guidance
+    mui-prototype-mode.md       # fast prototyping within MUI
+    structure-match.md          # matching project conventions
+    skill-evolution-protocol.md # how the self-improvement loop runs
 ```
 
 ## Key Rules (top 5 most impactful)
 
-1. **LR-009** — run eslint + type-check on touched files before declaring done
-2. **LR-IC** — react-icons only, no Iconify strings, no emoji, varied families
-3. **LR-002** — pixel-match every mockup detail (text casing, icons, spacing, variants)
-4. **LR-007** — SSRM tables use `invalidate` + `router.refresh()`, not `refetchQueries`
-5. **LR-021** — extract the largest reusable boundary, not the smallest visible duplication
+1. **LR-009** — run eslint + `getDiagnostics` on touched files before declaring done
+2. **LR-020** — comments read like a developer, not AI — covers `//`, `/* */`, AND JSDoc blocks
+3. **LR-IC** — react-icons only, no Iconify strings, no emoji, varied families
+4. **LR-013** — nav route checklist: 9 files to update when adding a page, or permissions silently break
+5. **LR-024** — all UI responsive via MUI breakpoints — fixed grids like `repeat(4,1fr)` overflow on mobile
 
 ## Current Stats
 
-- **14** learned rules (consolidated from 20, all mode-tagged)
-- **7** structured corrections tracked
-- **11** raw hook captures since 2026-04-01
-- **10** modes with exit checklists
-- **12** reference documents
+- **19** learned rules, all mode-tagged
+- **15** structured corrections tracked (including 3 amplify-mode entries, AMP-001..003)
+- **28** raw hook captures since 2026-04-01
+- **11** modes with exit checklists (added `amplify` mode 2026-04-17)
+- **13** reference documents (added `amplify-playbook.md` for Amplify Gen 2 layout)

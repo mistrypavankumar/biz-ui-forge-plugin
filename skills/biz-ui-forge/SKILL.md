@@ -12,10 +12,11 @@ Use this skill for business application UI work that must be both visually stron
 Role split:
 - In **mockup** mode, act like a **senior UI/UX designer**.
 - In **implement** mode, act like a **senior frontend developer**.
-- In **suggest** mode, act like a **senior UI consultant** giving quick actionable improvements.
+- In **suggest** mode, act like a **senior engineer + UI consultant** giving quick actionable improvements across both visual design and logic/code quality.
 - In **check** mode, act like a **QA engineer** running a pass/fail quality gate.
 - In **audit**, **redesign**, and **fix** modes, combine product judgment with safe production-minded frontend execution.
 - In **amplify** mode (`--amplify`), act like a **senior AWS cloud/backend engineer**: scaffold, fix, extend, and debug AWS Amplify Gen 2 backends (functions, data, auth, storage, CDK extensions) with deep awareness of this repo's pnpm monorepo + standalone-amplify layout.
+- In **doc** mode (`--doc`), act like a **senior tech writer / staff engineer**: produce clear, grounded repo documentation (ADRs, design docs, guides, runbooks, specs, postmortems) that cites real files and decisions — no fluff, no hallucinated APIs.
 
 Read project reality before changing design. Do not redesign from assumptions.
 
@@ -40,7 +41,7 @@ Choose exactly one mode.
 | Mode | Use when | Output |
 | --- | --- | --- |
 | audit | user wants assessment only | report only, no code |
-| suggest | user wants quick, actionable UI improvement ideas (`--suggest`) | prioritized suggestion list with rationale, no code |
+| suggest | user wants quick, actionable improvement ideas across UI + logic (`--suggest`) | prioritized suggestion list split into UI and Logic sections, with rationale; no code |
 | check | user wants logic correctness review with risk levels (`--check`) | risk-rated findings with suggested fixes, no code changes |
 | redesign | existing component needs modernization without an external mockup | direction brief, layout plan, implementation |
 | build | user describes a new page from requirements only | direction brief, layout plan, implementation |
@@ -50,10 +51,11 @@ Choose exactly one mode.
 | variant | user wants another visual concept without overwriting the prior one | new mockup variant |
 | learn | user wants to add, list, or remove learned rules (`--learn`) | updated `learned-rules.md` |
 | amplify | user wants AWS Amplify Gen 2 backend work (`--amplify`) — scaffold, fix, extend functions/data/auth/storage, debug sandbox/deploy issues | direction brief, file plan, implementation across `amplify/` + root plumbing, verification commands |
+| doc | user wants to create or update repo documentation (`--doc`) — ADRs, design docs, architecture notes, guides, runbooks, specs, postmortems, reports | a new or updated markdown file under `docs/<subfolder>/` following the subtype's conventions |
 
 Inference rules:
 - `--learn` flag or "add rule" / "learn this" / "new rule" / "remember this" means **learn**.
-- `--suggest` flag or "suggest improvements" / "what would you improve" means **suggest**.
+- `--suggest` flag or "suggest improvements" / "what would you improve" / "any code smells" / "what can be better" means **suggest** — covers both visual and logic improvements.
 - `--check` flag or "check logic" / "is this correct" / "review for bugs" means **check**.
 - Existing component path or pasted code plus review-only intent means **audit**.
 - Existing component path or pasted code plus modernization intent means **redesign**.
@@ -62,6 +64,7 @@ Inference rules:
 - Any request to turn a mockup, screenshot, HTML, or Figma design into MUI/React means **implement**.
 - If a visual zone belongs to a child component, table row, card, modal, tab panel, or sibling module, still stay in **implement** and update the necessary files. Do not force a parent-only implementation.
 - `--amplify` flag, or any mention of "amplify", "ampx", "amplify gen 2", "defineBackend", "defineFunction", "Function URL", "CDK" in the context of this repo, or any failure/question about `amplify/` folder, `ampx sandbox`, `amplify_outputs.json`, Lambda deploy, Cognito/AppSync scaffolded by Amplify — means **amplify**.
+- `--doc` flag, or phrasing like "write an ADR for X", "draft a design doc", "create a runbook", "document this decision", "write a guide for Y", "postmortem for Z" — means **doc**. Note: persistent outputs produced by other modes (e.g., `--check` writing to `docs/checks/` per LR-029, `mockup`/`variant` writing HTML under `docs/ui-mockups/` per LR-034) are NOT doc mode — those belong to their owning modes.
 
 ## Non-negotiable rules
 
@@ -210,23 +213,29 @@ Use this structure:
 
 ### Suggest
 
-Quick, actionable improvement ideas. No code output.
+Quick, actionable improvement ideas across **both UI and logic**. No code output.
 
-1. Read the target component and its immediate children.
-2. Read `docs/design/global-style-guide.md` and theme files for context.
-3. Produce a prioritized list of **5–10 concrete suggestions**, each with:
+1. Read the target component and its immediate children — including hooks, handlers, data fetching, state management, type definitions.
+2. Read `docs/design/global-style-guide.md` and theme files for UI context.
+3. Produce **two prioritized sections**:
+   - **UI improvements** — 5–8 suggestions
+   - **Logic improvements** — 3–7 suggestions
+4. Each suggestion follows the same four-field format:
    - **What**: one-line description of the change
-   - **Why**: the UX or visual problem it solves
-   - **How**: brief description of the MUI approach (component, token, pattern)
+   - **Why**: the problem it solves (visual/UX for UI items, correctness/perf/maintainability for logic items)
+   - **How**: brief description of the approach — MUI component/token/pattern for UI, hook/helper/refactor for logic
    - **Impact**: low / medium / high
-4. Group suggestions by category: hierarchy, density, color/contrast, interaction states, accessibility, consistency.
-5. Do not produce code. The user decides which suggestions to pursue.
+5. Group **UI** by: hierarchy, density, color/contrast, interaction states, accessibility, consistency, responsiveness.
+6. Group **Logic** by: performance (unnecessary re-renders, missing memoization, n+1 fetches), state management (derivable state, stale closures, dep arrays), data flow (prop drilling, context misuse, GraphQL over/under-fetch), error handling (unhandled rejections, missing guards, error boundaries), type safety (`as any`, missing discriminated unions, unsafe casts), maintainability (dead code, long files per LR, split opportunities), testability (side-effect surface, mock boundaries).
+7. Do not produce code. The user decides which suggestions to pursue.
+8. If the target has no meaningful logic (pure presentational component), output "Logic improvements: none — component is pure presentational" rather than inventing filler suggestions.
 
 **Exit checklist:**
-- [ ] 5–10 suggestions provided
-- [ ] Each has What / Why / How / Impact
-- [ ] Grouped by category
+- [ ] UI improvements section: 5–8 suggestions (each with What / Why / How / Impact)
+- [ ] Logic improvements section: 3–7 suggestions (same four fields) OR explicit "none — pure presentational" note
+- [ ] UI suggestions grouped by UI categories; Logic suggestions grouped by logic categories
 - [ ] No code output
+- [ ] Impact rating on every suggestion
 
 ### Check
 
@@ -489,6 +498,85 @@ Sub-intents inside amplify mode — pick by what the user is asking:
 - [ ] No `as any` in handler code; JWT payload extraction uses `typeof x === 'string'` guards
 - [ ] Verification step run and output shown to user (not just "should work")
 - [ ] Destructive commands (`sandbox delete`, wiping deployed stack) only executed after explicit user confirmation in the current turn
+
+### Doc
+
+Act like a **senior tech writer / staff engineer** producing grounded repo documentation. The goal: a reader six months from now should understand the why, where it lives in the codebase, and what changed — without the original author explaining it.
+
+**Before writing, always do this:**
+
+1. **Pick the subtype** — from the user's phrasing or a `--doc <subtype>` flag: `adr` · `design` · `architecture` · `guide` · `migration` · `runbook` · `spec` · `postmortem` · `report` · `readme` · `other`. If ambiguous, ask one short question ("ADR for the decision, or a design doc for how to build it?") and wait.
+2. **Read sibling docs of the same subtype** — e.g., for `adr`, open the last 1–2 files in `docs/adr/` and mirror their structure, header levels, and tone. For `guide`, read an existing `docs/*-migration-guide.md` or `docs/*.md` flat file. **Never invent a structure when a precedent exists.**
+3. **Grep the repo for concrete references** — if the doc talks about a file, component, function, or route, verify it exists with `grep`/`Read`. Cite by path (e.g., `apps/scm/src/.../foo.tsx:42`). If the referenced thing doesn't exist yet, mark it explicitly as "TBD" or "planned" — never imply it's already built.
+4. **Check for an existing file with the same slug** — `docs/<subfolder>/<slug>.md`. If it exists, read it and ask the user: overwrite, append as a new section, or create `<slug>-v2.md`. Never silently overwrite.
+
+**Subtype → file path convention:**
+
+| Subtype | Path | Naming |
+| --- | --- | --- |
+| `adr` | `docs/adr/NNN-<kebab-slug>.md` | N = next zero-padded integer after scanning `docs/adr/` |
+| `design` | `docs/design/<kebab-slug>.md` | lowercase, no date unless user asks |
+| `architecture` | `docs/architecture/<kebab-slug>.md` | same |
+| `guide` / `migration` | `docs/<kebab-slug>.md` (flat, mirroring existing `*-migration-guide.md`) OR `docs/guides/<kebab-slug>.md` if user specifies — **ask which if unclear** |
+| `runbook` | `docs/runbooks/<kebab-slug>.md` (create folder if missing) |
+| `spec` / `rfc` | `docs/specs/<kebab-slug>.md` (create folder if missing) |
+| `postmortem` | `docs/postmortems/YYYY-MM-DD-<kebab-slug>.md` (create folder if missing); date is incident date, not today |
+| `report` | `docs/reports/<kebab-slug>.md` (create folder if missing) |
+| `readme` | the target subdir's `README.md` — confirm target path before writing |
+| `other` | ask user for folder; default `docs/<kebab-slug>.md` |
+
+**Subtype → required structure:**
+
+- **ADR** — `# ADR-NNN: <title>` · Status (Proposed/Accepted/Superseded) · Date · Authors · **Context** (the forces/constraints — why this decision is needed) · **Decision** (what was decided, one paragraph max) · **Why each choice** (including rejected alternatives with specific reasons) · **Consequences** (positive + negative + what this enables/blocks) · **Related** (sibling ADRs, design docs, source files).
+- **Design doc** — `# <feature>` · Status · Date · Authors · **Problem** · **Goals / Non-goals** · **Proposed solution** (with file-tree sketch pointing at real paths) · **Data flow** / **State** / **API** as relevant · **Alternatives considered** · **Open questions** · **Rollout / migration** · **Risks** · **References**.
+- **Architecture** — `# <title>` · Status · Date · **Author** · diagram-first (ASCII or mermaid), then zones, then data flow, then boundary rules. Reference `docs/architecture/architecture.md` style if present.
+- **Guide / migration** — `# <topic>` · Date · **Author** · **Who this is for** · **Prereqs** · numbered steps (each step has: what to do, why, how to verify) · **Troubleshooting** · **Related docs**. Mirror `docs/purchase-order-detail-migration-guide.md` shape.
+- **Runbook** — `# <process>` · Date · **Author** · **When to use** · **Preconditions** · numbered steps (imperative, copy-pastable commands) · **Verification** · **Rollback** · **Escalation** (who to page).
+- **Spec / RFC** — `# <proposal>` · Status · Date · **Author** · **Summary (TL;DR)** · **Motivation** · **Detailed design** · **Backwards compatibility** · **Security** · **Testing** · **Drawbacks** · **Unresolved questions**.
+- **Postmortem** — `# <incident title>` · **Date / Duration / Severity** · **Author** · **Summary** · **Timeline** (UTC timestamps) · **Root cause** (5 Whys or causal chain) · **Contributing factors** · **What went well / what didn't** · **Action items** (owner + due date). Blameless language.
+- **Report** — freeform but grounded — `# <report title>` · Date · **Author** · Scope · Findings (cited) · Recommendations. See `docs/checks/*-logic-check.md` for a precedent.
+- **README** — purpose · install/build · key commands · links to deeper docs · **Author** (single name or team handle). Keep terse.
+
+**Writing rules (all subtypes):**
+
+1. **No fluff preambles.** Start with signal. Don't open with "In this document we will discuss..." — skip to the title block and Context.
+2. **Cite real files.** Use relative paths: `apps/scm/src/layouts/nav-config-floating.tsx:42`. Link sibling docs as `[ADR-013](./013-amplify-gen2-daxbot-readstream.md)` when in the same folder; use full relative path otherwise.
+3. **Absolute dates, not "last Thursday".** Use ISO format `YYYY-MM-DD` in the Date field; prose can say "on Thursday 2026-04-24".
+4. **No emojis** unless the user explicitly asks. Plain text + MUI/tech terms only.
+5. **LR-020 applies to docs too.** No AI-fluff sentences like "It's important to note that..." or "In summary, we have seen...". Write like a dev writing for their future self.
+6. **Mark unknowns explicitly.** `TBD`, `PLANNED`, `NOT YET IMPLEMENTED` — never imply completeness.
+7. **Tables for option comparisons** (pros/cons/rejected alternatives). Prose for narrative.
+8. **Mermaid or ASCII** for data-flow diagrams, not embedded images (repos reject external image hosts; images add asset drift).
+9. **Status field is a source of truth.** Options: `Proposed` · `Accepted` · `Implemented` · `Superseded by <ref>` · `Deprecated`. Update it when the doc's state changes.
+10. **Related-docs section is mandatory** on ADRs, design docs, and specs. Minimum: one link back to the nearest parent doc or the ADR that authorized this one.
+11. **Author field is mandatory on every doc.** Default to the current git user — read via `git config user.name` (fallback to `git config user.email` if name is empty). Format: `- **Author**: <git-user>` or `- **Authors**: <git-user>, <co-author>` for multi-author docs. Never leave blank, never use "Claude" / "AI" / the assistant's name — the author is the human checking in the commit. If the git user can't be resolved, ask the user once before writing.
+
+**Sub-commands inside doc mode** (passed as `--doc <subtype> <slug>`):
+
+| Usage | Behavior |
+| --- | --- |
+| `--doc adr <title>` | Create a new ADR with next-available ID |
+| `--doc design <slug>` | Create a design doc |
+| `--doc guide <slug>` | Create a migration/user guide |
+| `--doc runbook <slug>` | Create an ops runbook |
+| `--doc spec <slug>` | Create a spec / RFC |
+| `--doc postmortem <slug>` | Create a postmortem (ask for incident date if not given) |
+| `--doc list [subtype]` | List existing docs in the target folder (no write) |
+| `--doc update <path>` | Update an existing doc — read first, confirm which sections to edit |
+
+**Exit checklist:**
+
+- [ ] Subtype confirmed or inferred; correct file path computed per the table above
+- [ ] Sibling doc of same subtype read before writing (structure mirrored)
+- [ ] Every file/function/component/route reference verified to exist (or marked TBD)
+- [ ] No emojis, no AI-fluff preambles, no "In this document we will..." openers
+- [ ] Dates in ISO `YYYY-MM-DD` format
+- [ ] Status field present and accurate
+- [ ] **Author field present** — populated from `git config user.name`, never blank, never "Claude" / "AI"
+- [ ] Related-docs section present with at least one link (for ADR/design/spec)
+- [ ] Pre-existing file at the same path: user was asked before overwrite
+- [ ] Folder created only when needed; existing folder conventions honored
+- [ ] No code changes — this mode never edits `apps/`, `packages/`, or any `.ts`/`.tsx` file
 
 ## Deliverable order
 

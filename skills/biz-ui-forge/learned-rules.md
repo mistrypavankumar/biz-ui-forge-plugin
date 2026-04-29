@@ -6,6 +6,86 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 
 ---
 
+### LR-037 — Canonical create/edit modal pattern: shared modal + useRequiredSchema + handleSubmit + nested-aware section meta
+- **Promoted from**: User explicit instruction (2026-04-29) after the location-modal session that established the full pattern
+- **Category**: incomplete-phase
+- **Modes**: implement, fix, redesign, build
+- **Rule**: Every entity create/edit modal must follow this exact wiring. Skipping any step is a bug — half the wiring breaks the other half (e.g., `methods.trigger()` instead of `methods.handleSubmit()` silently swallows the validation banner; missing dot-paths in `FIELD_TO_SECTION` silently swallows nested errors).
+  1. **Shell**: `<CreateEditDialogModal>` from `@daxwell/ui/components/custom-modals` (deep import). Required props: `open`, `onClose`, `title`, `modalActionType`, `onSubmitAction`, `sections`, `sectionMeta`, `loading`, `icon` (always pass — react-icons component, `size={18}`). Use `spanText={...}` for the edit-mode entity name suffix.
+  2. **Sections**: each entry needs `id`, `label`, `icon` (react-icons), `groupLabel`, `title`, `description`, `count`, `content`. Group related sections with the same `groupLabel` so the sidebar dividers render correctly.
+  3. **Required-field source of truth**: call `useRequiredSchema(entityName, baseZodSchema)` from `@daxwell/ui/hooks/useRequiredSchema`. The hook merges the backend's `getCreateFieldRequirements` map with your Zod schema. It returns:
+     - `schema` — pass to `zodResolver(schema)` so the backend's `inputRequired` flags participate in validation.
+     - `isFieldRequired(name)` — pass to every `Field.*` component as `required={isFieldRequired('fieldName')}`. The asterisk renders automatically.
+     - `loading` — feed into the modal's `loading` prop alongside the mutation's loading state.
+  4. **Frontend-only required overrides**: when a field is required by Zod (`min(1)`) but the backend says `inputRequired: false` (e.g., `locationType` in the location modal), hardcode `required` on the Field. The hook can't see the Zod schema's content, only the backend map.
+  5. **Section meta wiring** (this is where most modal bugs live):
+     - Build `FIELD_TO_SECTION: Record<string, sectionId>` mapping every field path to its section. **Include nested dot-paths** for nested fields: `'address': 'address'`, `'address.addressLine1': 'address'`, `'address.city': 'address'`, etc. Top-level keys alone won't catch nested errors.
+     - Build `FIELD_LABELS: Record<string, string>` for every key in FIELD_TO_SECTION. Banner labels use this map; missing entries fall back to the raw path which reads ugly.
+     - Call `useSectionMeta(formState.errors, FIELD_TO_SECTION, FIELD_LABELS, formState.isSubmitted, { watchedValues, isFieldRequired })` from `@daxwell/ui/hooks/use-section-meta`.
+     - **Watched values proxy for nested FKs**: `useSectionMeta` reads `watchedValues[fieldName]` as a primitive for filledness. For nested FK objects (`address`, `returnAddress`), substitute `addressLine1` (or another canonical sub-field) so the section gets the proactive yellow chip when the primary line is empty:
+       ```ts
+       const watchedForSectionMeta = useMemo(
+         () => ({ ...watchedValues, address: watchedValues.address?.addressLine1 ?? '', ... }),
+         [watchedValues],
+       );
+       ```
+     - Pass the resulting `sectionMeta` down to `<CreateEditDialogModal sectionMeta={sectionMeta} />`. The modal auto-merges errors + isValid into each section.
+  6. **Submit handler MUST use `methods.handleSubmit(onValid)()`** — not `methods.trigger()`. Only `handleSubmit` flips `formState.isSubmitted = true`, which is the gate `useSectionMeta` uses to bucket Zod errors into the section banner. Pattern:
+     ```ts
+     const handleCreateSubmit = useCallback(
+       () =>
+         methods.handleSubmit(async (values) => {
+           await createMutation({ variables: { input: buildInput(values) } });
+           dialog.onFalse();
+           refreshGrid();
+         })(),
+       [methods, createMutation, dialog, refreshGrid, buildInput],
+     );
+     ```
+  7. **Cascading Country/Province/City**: never roll your own. Use `<AddressLocationFields>` from `@daxwell/ui/components/custom-form-fields/address-location-fields`. It expects `country` to be `{ code, name }` (object), so the Zod schema must use `z.object({ code: z.string(), name: z.string() })` for that field, and `handleEdit` must hydrate the backend's string country into the object via `getCountryOptions().find((c) => c.code === item.country)`. `buildInput` must extract `country?.code ?? null` for the API.
+  8. **Strict vs lenient address schemas**: when the primary address FK is backend-required, define a `requiredAddressSchema` with each sub-field enforced via a `requiredString(label)` helper (see `apps/scm/src/sections/business-objects/schema/location-schema.ts:12-29` for the canonical helper). Use the strict schema for the primary address (non-nullable), and a lenient `addressSchema` (`.nullable().optional()` per sub-field) for the optional return address.
+  9. **`refOption` for FK autocompletes**: every FK that maps to `Field.LazyAutocomplete` or `Field.Autocomplete` must use the `z.preprocess` pattern that coerces stray strings to null:
+     ```ts
+     const refOption = z.preprocess(
+       (val) => (val && typeof val === 'object' ? val : null),
+       z.object({ id: z.string(), name: z.string().optional() }).passthrough().nullable().optional(),
+     );
+     ```
+     Without this, MUI Autocomplete's transient input state can leak a string into the form value and cause a `Expected object, received string` Zod failure.
+  10. **Mutation shape**: verify whether the backend resolver takes `(id: ID!, input: ...)` separately or `(input: ...)` only with `id` folded inside. Run a smoke create+update before declaring done — the `Unknown field argument 'id'` validation error is the dead giveaway that the resolver expects the folded form. Always return `{ id }` only on mutation responses (LR-014).
+  11. **Sidebar count chip indicator** — already wired in the shared `SidebarNav`, but only fires when section meta is correct. Don't try to add per-section red/yellow indicators in the modal call site; trust the shared component once steps 5–6 are correct.
+  12. **List view consumer pattern**: `LocationListView` is the canonical example — `useRequiredSchema` → `useForm` with `zodResolver(schema)` → `methods.watch()` → proxy + `useSectionMeta` → `useCustomMutation` for create/update/delete with `invalidate: refreshGrid` (LR-007) → `methods.handleSubmit` submit handlers → spread `sectionMeta` into the `<EntityModal>`.
+- **Why**: Modal wiring is a multi-file dance: shared modal component + Zod schema + `useRequiredSchema` + `useSectionMeta` + RHF `formState` + `FIELD_TO_SECTION` + `handleSubmit`. Any single missing piece silently produces "looks fine but broken" symptoms (banner doesn't show, asterisks missing, section chip stays gray on errors, type errors from string-where-object-expected, `Expected object, received string` Zod failures, server `Unknown field argument 'id'`). The location-modal session iterated through every one of these failure modes; this rule captures the full wiring so the next modal lands in one pass instead of fifteen corrections.
+
+---
+
+### LR-036 — Use `@include` / `@skip` directives to avoid fetching fragment fields the caller doesn't need
+- **Promoted from**: User explicit instruction (2026-04-28)
+- **Category**: other
+- **Modes**: implement, fix, build
+- **Rule**: When writing or modifying a GraphQL query/mutation that pulls in a large fragment (e.g., `...WorkItemInfo`, `...SalesOrderFields`) but a particular caller only needs a subset of that data, gate the heavy fragment with a `@include(if: $needFull)` or `@skip(if: $countsOnly)` directive and pass the appropriate boolean variable per call site. Concrete shape:
+  1. **When the same query is reused across light and heavy callers** (e.g., one caller wants only `totalRows`/`rowCountsByStatus`, another wants the full row list): add a `Boolean!` variable to the query (`$includeRows: Boolean! = true`) and decorate the fragment spread (`rows { ...WorkItemInfo @include(if: $includeRows) }` or skip the entire `rows` field).
+  2. **For metadata-only fetches** (counts, totals, existence checks): set the gate variable to `false` so the server skips the row materialization entirely. Pair with `endRow: 0` or similar pagination hints when the schema supports them.
+  3. **Don't add a directive without a real caller that benefits** — gating fields nobody skips is dead complexity. The trigger is "this query is now reused by a caller that doesn't need the heavy fragment."
+  4. **Mutation responses follow LR-014 first** (return only `{ id }`); `@include`/`@skip` is the rule for shared *query* documents where some callers genuinely need the fragment and others don't.
+- **Why**: Apollo and most GraphQL servers materialize every field the document selects, even when the caller will throw the data away. A list page that runs the same query twice — once filtered for visible rows, once unfiltered for tab counts — pays the full row-resolution cost on the unfiltered call when it only needs `totalRows` + `rowCountsByStatus`. `@include` / `@skip` lets one query document serve both shapes without duplicating it. This compounds with LR-026 (prefer backend counts) — the count-only call should also skip the row payload entirely, not just rely on `endRow: 1`.
+
+### LR-035 — Shared `packages/*` components are the first-priority import; never swap to an app-local copy to dodge a stale dist
+- **Promoted from**: User explicit instruction (2026-04-27) after I switched `subsidiary-selection.tsx` from `@daxwell/ui/components/hook-form` to `'src/components/hook-form'` to bypass a stale `packages/ui/dist` build
+- **Category**: wrong-component
+- **Modes**: all
+- **Rule**: When the same component, hook, or utility exists in both a shared `packages/*` location (e.g., `@daxwell/ui/components/hook-form`) and an app-local location (e.g., `apps/scm/src/components/hook-form`), the **shared `packages/*` version is the canonical import** — always prefer it. App-local copies are duplicates pending consolidation; reaching for them creates drift across apps. Concrete requirements:
+  1. **For new code:** import from `@daxwell/ui/...`, `@daxwell/utils/...`, `@daxwell/types`, `@daxwell/constants`, `@daxwell/graphql`, etc. — never from the matching `apps/scm/src/...` path when a shared equivalent exists.
+  2. **For existing code that already uses the app-local copy:** leave it alone unless the file is being touched for an unrelated reason; do not migrate opportunistically (scope creep). If the file IS being touched and the switch is a one-liner, prefer to flip it to the shared import.
+  3. **Never switch FROM shared TO app-local just because the shared one "doesn't work":**
+     - If the shared source has the right code but the dist is stale → rebuild the package: `pnpm --filter @daxwell/ui build` (or the equivalent target). LR-035 forbids the workaround.
+     - If the shared source is missing the feature → add it to the shared source AND rebuild — do not patch only the app-local copy.
+     - If the shared source has a bug → fix it in `packages/*` so all consumers benefit.
+     - The only acceptable reason to switch to the app-local copy: the app-local one has app-specific behavior that genuinely cannot live in the shared package (rare; document the reason in the import or commit message).
+  4. **When the shared package's `dist` is suspected stale:** verify with `grep` against `packages/<pkg>/dist/` for the expected symbol. If missing, run the package's build script. The diff in question (`-import { Field } from '@daxwell/ui/components/hook-form'` / `+import { Field } from 'src/components/hook-form'`) is exactly the shape that LR-035 prohibits.
+  5. **Applies to LR-IC, LR-023, LR-028, LR-032 too** — shared-first is consistent across all of them. LR-035 is the explicit "don't dodge the shared" version of those rules.
+- **Why**: When two equivalent components exist (one shared, one app-local), bug fixes get applied to whichever copy the dev happened to import, and the other drifts. The user's earlier rules (LR-023, LR-028) already promoted shared-first for hooks/utilities; LR-035 makes it explicit for the most tempting failure mode — a stale `packages/*/dist` build. The "easy" workaround of swapping to the app-local copy hides the real problem (build out of date), prevents other apps from getting the fix, and makes the app-local file a permanent fork. Rebuilding the package once is cheaper than years of drift. Even when the user's question is "fix this UI bug," the principled fix preserves the shared boundary.
+
 ### LR-034 — All mockups live under `docs/ui-mockups/` and the folder is gitignored
 - **Promoted from**: User explicit instruction (2026-04-23)
 - **Category**: other

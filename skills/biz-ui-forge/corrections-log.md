@@ -13,6 +13,107 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 
 ## Corrections
 
+### CR-004 — Backend permission gate change introduced row-flooding regression because `TOTAL=true` overrides field-level removals
+- **Date**: 2026-04-27
+- **Status**: Active (count = 1)
+- **Category**: assumption-error
+- **Mode**: fix
+- **What happened**: After my CR-003 backend fix (changing the OWNERSHIP gate so ALL-scope users skip the ownership check), the user reported that lists started "showing all" — meaning records they didn't own began appearing, and field-level removals (e.g., subsidiary) weren't taking visible effect.
+- **Root cause**: Two interacting design facts I missed:
+  1. `getFieldPermissions(key, hasTotalPermission)` short-circuits to `FieldPermission.fromTotalPermissions(...)` (i.e., grants ALL fields) whenever `hasTotalPermission == true`. Removing one field permission at the editor level does NOT flip TOTAL to false — TOTAL is a separate row in the permissions table. So field-level removals are silently overridden when TOTAL=true.
+  2. The existing `applyEntityFilter` in the list path was using `if (!isOwner) return null` as an *implicit* row-level filter for ALL scope + non-total users. The codebase relied on this side effect for row filtering. My fix (skip the gate for ALL scope) exposed every row to ALL-scope users, which is technically correct ALL semantics but contradicted the user's permission setup that relied on the implicit filter.
+  Net result: my fix made the list "leak" rows that the buggy behavior had been hiding.
+- **Correct behavior**:
+  1. Before changing a backend permission gate, trace the *full* permission model — including how `TOTAL` interacts with field-level grants in `getFieldPermissions` / `getAllowedFields`. The `TOTAL=true` short-circuit is a load-bearing detail that affects every downstream check.
+  2. Don't change row-level filter semantics in the same patch as field-level masking. They're independent concerns and reverting one without the other leaves the system in a half-state.
+  3. When the symptom is "redirect on permission removal," the right first move is to fix it on the frontend (which I'd already done with `AccessRestrictedCard`). The backend gate change was over-eager — the frontend had already absorbed the null/redirect symptom into a rendered card, so changing backend semantics was both unnecessary and risky.
+  4. Reverting both backend edits restores the user's existing model. The frontend `AccessRestrictedCard` continues to render gracefully for OWNERSHIP redactions — that's the correct UX layer for this concern.
+- **Notes**: Two-step regression: CR-003 fixed a real symptom (redirect when subsidiary removed) but its backend implementation introduced this row-flooding regression. The right approach was frontend-only (AccessRestrictedCard) — which was already shipped. I should have stopped there and asked the user whether they wanted backend-level changes before making them.
+
+### CR-003 — Treated `@include` as a cure-all for redactions, missed that field-level missing perms still trigger OWNERSHIP at the record level
+- **Date**: 2026-04-27
+- **Status**: Active (count = 1; CR-002 increment-candidate — same root pattern as CR-002)
+- **Category**: assumption-error
+- **Mode**: fix
+- **What happened**: After the `@include` fix landed, the user removed read permission on `subsidiary` (a single non-line field) and the detail page redirected to the list view. Frontend `@include(if: $includeSubsidiary)` had been added, so `subsidiary` was excluded from the GraphQL selection set — yet the response still came back as `getTransferOrderById: null` with `reason: "OWNERSHIP"`.
+- **Root cause**: Backend `FieldAccessService.get()` (`daxwell-scm-server/src/main/java/.../auth/permission/FieldAccessService.java:70-89`) checks `permissions.hasTotalAccessWithConditionsMet() && permissions.hasAllScope()` first — and `hasTotalAccessWithConditionsMet()` requires the user to have read permission on **every field of the entity**, not just the requested fields. When the user has ALL scope but lacks read on even one field (subsidiary), the fast-path branch fails, then control falls into `if (!ownershipPolicyRegistry.isOwner(source)) return DENIED(OWNERSHIP)`. So a user with ALL scope + missing one field permission gets treated like an OWN-scope user. The frontend `@include` cannot prevent this because the backend gating logic looks at the **full permission set**, not the **requested fields**. I had assumed `@include` would mask all redaction problems and only later realized the backend's "total access" check doesn't intersect with `requestedFields` at the gate level.
+- **Correct behavior**:
+  1. When a backend redaction returns `reason: OWNERSHIP` (not `FIELD_PERMISSIONS`), the cause is at the entity-scope/ownership layer, not the field selection layer. `@include` on individual fields does NOT change this — the gate runs before field-level masking.
+  2. Read the gating code on the backend before claiming a frontend-only fix will resolve the symptom. In this case, `FieldAccessService.get()` clearly shows the OWNERSHIP branch fires whenever `(hasTotalAccessWithConditionsMet && hasAllScope)` is false — and "total access" is broken by ANY missing field permission.
+  3. Two correct fixes for the OWNERSHIP-on-partial-field-perms pattern:
+     - **Backend**: change the OWNERSHIP gate to only apply when the user lacks ALL scope (not when they have ALL scope but partial field perms). Field-level masking should still happen via the partial path below.
+     - **Schema**: make all redactable fields nullable. Then field redaction returns null without bubble; ownership check still runs as designed.
+  4. Frontend `AccessRestrictedCard` is still correct UX — it should render whenever an OWNERSHIP redaction comes back, regardless of cause. The fix here is to make OWNERSHIP not fire incorrectly in the first place.
+- **Notes**: This is the same "diagnosis was wrong, not implementation" pattern as CR-002. The two together suggest a learned rule: before claiming a redaction-class bug is fixed by a frontend-only change, prove the redaction reason and the backend gating layer agree with the proposed fix path. If `reason: OWNERSHIP` and the gate is record-scope, no frontend change can avoid it.
+
+### CR-002 — Declared a fix "complete" before verifying the redaction was actually field-level
+- **Date**: 2026-04-27
+- **Status**: Active (count = 1)
+- **Category**: assumption-error
+- **Mode**: fix
+- **What happened**: User pasted a GraphQL response with `redactions[0].path: ["getTransferOrderById"]`, `entityType: "TransferOrder"`, `reason: "OWNERSHIP"`. Claude assumed this was a field-level (TransactionLine) redaction triggered by the query asking for `transactionLines` without permission. Applied a `@include(if: $includeLines)` directive on both detail queries and a `canReadField` gate on the variable. User responded "still not fixed" — meaning the @include fix didn't address the actual redaction.
+- **Root cause**: The redaction `path` was `["getTransferOrderById"]` (top-level), `entityType: "TransferOrder"`, NOT `["getTransferOrderById", "transactionLines"]` with `entityType: "TransactionLine"`. The backend was redacting the whole record because of TransferOrder-level OWNERSHIP rules, not because the query selected `transactionLines`. The @include trick only helps if the redaction is on the requested field itself; here the redaction was on the parent record. Should have read the response shape more carefully before declaring root cause.
+- **Correct behavior**:
+  1. Read the redaction `path` and `entityType` precisely — `["X"]` with `entityType: X` means top-level X is redacted, NOT a field of X.
+  2. When the backend reports `entityType: TransferOrder` + `reason: OWNERSHIP`, the cause is TransferOrder-level scope (OWN vs ALL), not a sub-entity permission. `@include` on a sub-field won't change that.
+  3. Before declaring complete, ask the user to verify the network request still shows the same `path` and `entityType` after the fix — if so, the fix didn't address the real cause.
+  4. The @include fix is still useful for cases where redaction IS on a sub-field, but it shouldn't be sold as a fix for top-level OWNERSHIP redactions.
+- **Notes**: This is a "fix didn't address root cause" pattern. Different from a coding mistake — the diagnosis was wrong, not the implementation.
+
+### CR-001 — False-positive: hook fired on follow-up question, not a correction
+- **Date**: 2026-04-27
+- **Status**: Active (false positive — do not promote)
+- **Category**: other
+- **Mode**: suggest
+- **What happened**: User asked "what should be the minimum requirement so that user can see this page" — a follow-up question after the AccessRestrictedCard implementation worked correctly (Image 23 shows the centered card as designed).
+- **Root cause**: The `UserPromptSubmit` correction-detection hook is regex-based and flagged this prompt as a correction even though there's no correction signal. The user is moving forward with a new question, not correcting the previous turn.
+- **Correct behavior**: Skip writing a structured "what went wrong" entry when the hook fires but the user message contains no actual correction language ("no", "wrong", "again", "you forgot", etc.). Briefly acknowledge the false positive in the log so the pattern is visible during periodic review, but don't burn a full root-cause analysis on it.
+- **Notes**: If this false-positive pattern recurs (count ≥ 2), consider tightening the hook regex rather than promoting a "rule" — the issue is detection precision, not behavior.
+
+### FIX-047 — Over-interpreted "query results be table" as UI-render-as-table when the user meant "with these field columns"
+- **Date**: 2026-04-24
+- **Mode**: fix (global-search query field update)
+- **What happened**: User said "update global search query results be table" followed by a list of 9 fields (id, name, recordType, ...). I interpreted "be table" as "should be rendered as a table in the UI" and replaced the `ResultItem` list rendering with an AG Grid, widened the dialog to `maxWidth="lg"`, added `AgGridReact`, `GridWrapper`, `useRouter`, cell column defs, and a type narrowing. User response on seeing the result: "i don't want to show this as table, i want before ui only" — meaning they wanted the UI to stay as the prior ResultItem list and only the QUERY field set to change. The 9-field list was the spec for the query output shape (GraphQL selection set), not a UI column map.
+- **User correction**: "i don't want to show this as table, i want before ui only"
+- **Root cause**: `assumption-error` — ambiguous user phrasing interpreted in the most-work direction without asking. "query results" has two senses: (a) the set of columns the query returns, (b) the UI rendering of those results. User's phrasing + a bare list of fields is consistent with either. Adding LR-022's bias ("tables should be AG Grid") made me default to interpretation (b). When the user's intent is ambiguous and the implementation cost differs substantially between interpretations (1-line query change vs multi-file UI rewrite), **ask a one-line clarification before picking**.
+- **Correct behavior**: When a user command mixes "query" terminology with a field list and the word "table" ambiguously:
+  1. **Default to the narrow interpretation** — update the query selection set only. Leave rendering untouched.
+  2. **Only touch the UI** if the user explicitly says "render as a table", "show as a grid", "replace the list", or points at a UI element to change.
+  3. **When genuinely ambiguous**, ask one short clarifying question before any multi-file edit: "Do you want the GraphQL query selection set updated to these fields, or the UI to render as a table with these columns?"
+  4. **The field list alone is a selection-set spec**, not a UI spec. UI rendering requests usually include layout verbs ("render", "show", "display", "replace the list").
+  5. **LR-022 triggers on actual table-shaped UI, not on the word "table" appearing in a user message.** A GraphQL "results table" is a data concept, not a rendering requirement.
+- **Count**: 1 (severity MEDIUM — wasted a turn + required a revert, but no production bugs shipped)
+- **Status**: active
+
+### FIX-046 — Rationalized around LR-022 and used Box-based table instead of AG Grid inside a detail-panel section
+- **Date**: 2026-04-24
+- **Mode**: implement (intel-detail-panel SystemSection annotations table)
+- **What happened**: User asked me to "implement a table" showing agent annotations inside `SystemSection`. LR-022 mandates AG Grid for all tables with no exception. I considered it, then talked myself out of it on the grounds that (a) the section is narrow, (b) sibling sections in the same file use Box-based lists, (c) this is read-only metadata with <20 rows, and shipped a Box/CSS-grid table. I even wrote "On reflection... LR-022's spirit is about list pages" in my thinking — that is the exact kind of rationalization LR-022 was written to prevent. User response: "use ag grid table" — immediate, unambiguous correction.
+- **User correction**: "--fix use ag grid table"
+- **Root cause**: `assumption-error` compounded with ignoring a learned rule. The learned rule already anticipated my rationalizations (its text is "even if the mockup looks simpler than what AG Grid renders by default"), and I still found a loophole. Sibling-pattern consistency (`SignalsSection`, `SourceRefsSection` use Box-based lists) is not a valid override for a learned rule — it's noise that predates the rule.
+- **Correct behavior**: **When LR-022 applies, use AG Grid + GridWrapper, period.** Specific requirements:
+  1. The word "table" from the user → AG Grid via `GridWrapper` + `AgGridReact`. No Box/CSS-grid table. No MUI `Table`. No exceptions for "narrow sidebar", "small data set", "read-only", or "sibling sections already use lists".
+  2. Sibling-file precedent does not override a learned rule. The lists in `SignalsSection` / `SourceRefsSection` are lists, not tables — they do not justify a Box-based table anywhere else.
+  3. Column visuals that would have been hand-styled in the Box table go into `cellRenderer` functions — exactly as LR-022 prescribes.
+  4. For compact embed-in-panel usage, pass `height` and `hideNativePagination`/`suppressNoRowsOverlay` to shape the grid; don't replace the grid.
+  5. Pre-response self-check must explicitly include: "if I wrote a table-shaped UI, is it AG Grid?" — if the answer is anything other than yes, it's a bug.
+- **Count**: 1 (but severity HIGH — same class of rationalization as IMPL-005 which originally promoted LR-022)
+- **Status**: active
+
+### FIX-045 — Assumed skill ownership belonged to the project ("Daxwell"), not the individual author
+- **Date**: 2026-04-24
+- **Mode**: doc (readme rewrite)
+- **What happened**: When rewriting `README.md` in the root-project's visual style, I carried over the root README's "Proprietary — Copyright © 2026 Daxwell" license block verbatim. The user clarified the skill is their personal work: "no need to add daxwell it by me Pavan Kumar Mistry".
+- **User correction**: "no need to add daxwell it by me Pavan Kumar Mistry"
+- **Root cause**: `assumption-error` — I treated the skill's attribution as a property of its hosting repo (Daxwell SCM). Skills under `.claude/skills/` are frequently author-owned artifacts that happen to live inside a project repo; they are not automatically works-for-hire of the project the repo belongs to. I should have asked whose name goes on the skill's author/copyright line before copying the root project's license.
+- **Correct behavior**: For skill-level `README.md` / `SKILL.md` / reference playbooks under `.claude/skills/<skill>/`:
+  1. **Default author attribution to the individual** (git user, or explicitly named author) — not to the org that owns the surrounding monorepo.
+  2. **Do not auto-copy a proprietary-project license** into a skill's README. If unclear, ask: is this skill (a) owned by the project and under the project license, (b) owned by the individual and licensed separately, or (c) explicitly unlicensed / MIT / personal?
+  3. **Keep the skill's attribution stable** across edits. A later stylistic rewrite shouldn't silently change the author line.
+  4. The author line this skill uses: `Pavan Kumar Mistry`. Keep this canonical for future edits to any file under `.claude/skills/biz-ui-forge/` unless the user says otherwise.
+- **Count**: 1
+- **Status**: active
+
 ### FIX-044 — Disabled a nav parent that has children; muted the row and blocked sub-menu access
 - **Date**: 2026-04-24
 - **Mode**: fix (nav placeholder — follow-up to FIX-043)
@@ -24,7 +125,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   2. **Parent-with-children** — unique `path: '#tbd-<slug>'` only. No `disabled` flag. Click/hover expands the flyout; the parent's path is never navigated to because the renderer branches on `hasChildren` before falling through to `router.push`.
   3. **Rule of thumb**: `if (item.children?.length) { keep enabled } else { disabled: true }`.
 - **Count**: 1
-- **Status**: active — fix applied in the current turn.
+- **Status**: active
 
 ### FIX-043 — Used the same placeholder path `/#` across multiple nav items; React key collision
 - **Date**: 2026-04-24
@@ -41,7 +142,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   b. **Unique anonymous paths + click interception** — if no `disabled` prop, give each placeholder a unique string (e.g., `#inventory-overview`, `#organization-tba`) so React keys are unique, AND ensure the renderer's click handler treats fragment-only paths as no-ops.
   The choice depends on what the nav renderer already supports — ALWAYS check the renderer before choosing.
 - **Count**: 1
-- **Status**: active — fix being applied in the current turn.
+- **Status**: active
 
 ### FIX-042 — Over-advocated for security posture when production UX constraint made the fix non-viable; user had to revert
 - **Date**: 2026-04-24
@@ -55,7 +156,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   3. Do not advocate for one side when both sides are legitimate engineering choices the user is authorized to make for their own product. My role is to lay out the options precisely; the user picks.
   4. Also: reverting a prior skill-directed fix is not a "mistake" on either side — it's updated information about which trade-off is load-bearing. Log it, apply cleanly, move on.
 - **Count**: 1
-- **Status**: active — revert being applied in the current turn.
+- **Status**: active
 
 ### FIX-041 — Inlined per-shard @keyframes with identical names caused global collision; only the last shard's values applied to all
 - **Date**: 2026-04-23
@@ -70,7 +171,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   Rule of thumb: if your keyframe content is the same across consumers, option (1) is always the answer. Option (2)/(3) only when the keyframe body itself is structurally different per consumer.
 - **Sister lesson**: when debugging "animation doesn't match config data," inspect the **rendered CSS** (devtools → Animations panel or `getComputedStyle`) before trusting that sx compiles to what you wrote. Lint and TS cannot catch emotion → global CSS naming collisions.
 - **Count**: 1
-- **Status**: active — fix being applied in the current turn (collapse to one keyframe + per-shard CSS custom properties).
+- **Status**: active (collapse to one keyframe + per-shard CSS custom properties)
 
 ### FIX-040 — Confetti burst implemented as unidirectional rain instead of radial 360° spread
 - **Date**: 2026-04-23
@@ -86,7 +187,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   5. **Stagger more densely** (0.15s between shards, not 0.3s) and use shorter lifetime (~1.8s vs 2s) so there are always shards in flight; the motion reads as "ongoing burst" instead of "sequential drops."
   6. **Scale in from 0.5 → 1** during the first 15% of the lifetime so each shard *appears* at the button and then flies outward — classic firework/confetti cannon feel.
 - **Count**: 1
-- **Status**: active — fix being applied in the current turn.
+- **Status**: active
 
 ### FIX-039 — Implemented a visual mockup state as a prop-gated feature with nothing to turn it on
 - **Date**: 2026-04-23
@@ -100,7 +201,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   3. **Trace package resolution before declaring done** — if the consuming app reaches into `@daxwell/ui` via `./dist/*` exports, a source-only edit is invisible at runtime. Either (a) run `pnpm --filter @daxwell/ui build` after the edit, or (b) confirm `pnpm --filter @daxwell/ui dev` is running in watch mode, or (c) tell the user in the final summary that a rebuild is required. Silent dist/src divergence is a completeness bug.
   4. **Verify with the user's view, not with lint/types alone** — lint+types green is necessary but not sufficient for "mockup implemented" claims; the feature has to actually render in the app the user is looking at.
 - **Count**: 1
-- **Status**: active — applying all three fixes in the current turn (flip celebrating in consumer, swap glyph to sparkle when celebrating, rebuild package).
+- **Status**: active (flip celebrating in consumer, swap glyph to sparkle when celebrating, rebuild package)
 
 ### FIX-038 — Guessed a size (34) by eyeball after already deriving the exact measured spec (36) from the reference element
 - **Date**: 2026-04-23
@@ -110,7 +211,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 - **Root cause**: `assumption-error` — I measured the reference spec correctly, wrote the measurement in the direction brief, then picked a different number by eyeball when writing code. The spec existed; I overrode it with a vibe.
 - **Correct behavior**: When aligning one element's size with another, if the reference element's computed size is derivable from code (padding + content + padding), **use that exact number**. Do not soften it to a "nicer-looking" value. If the computed number disagrees with how the two elements actually look side-by-side, investigate the mismatch (zoom, screenshot compression, different box-sizing, border math) before picking a different value — don't just split the difference.
 - **Count**: 1
-- **Status**: active — fix being applied in the current turn (34 → 36).
+- **Status**: active (34 → 36)
 
 ### FIX-037 — Solved a null-bubble by defaulting the `@include` variable to false, silently losing data for legitimate readers
 - **Date**: 2026-04-22
@@ -124,7 +225,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   3. Treat `@include` default-false as **opt-in-by-caller** for dynamic permission variables, not as a global kill switch. Document the expected caller values in a one-line comment near the query (or in the PR description), not via a default that silently hides data.
   4. Test the admin read path and the non-admin read path both before declaring the fix done — admins must see the data; non-admins must not crash.
 - **Count**: 1
-- **Status**: active — fix being applied in the current turn (opt in from `user-profile-server-view.tsx`).
+- **Status**: active (opt in from `user-profile-server-view.tsx`)
 
 ### FIX-036 — Stopped at named entity and flagged siblings as "out of scope" instead of finishing the systemic fix
 - **Date**: 2026-04-22
@@ -138,7 +239,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
   3. Only defer siblings to a follow-up turn if: (a) the fix requires per-item data the user hasn't provided, OR (b) the fix is architecturally risky per-item (unknown entity type, ambiguous naming), OR (c) the user explicitly said "just this one". Document which exception was hit.
   4. For LR-013 business-objects sections specifically, treat every route in `paths.dashboard.businessObjects.*` as a checkable unit — if one is missing wiring, scan the whole subtree and fix the set in one commit's worth of edits.
 - **Count**: 1
-- **Status**: active — fix being applied now in the current turn; entry retained for promotion review.
+- **Status**: active; entry retained for promotion review
 
 ### FIX-035 — Ran eslint but skipped `mcp__ide__getDiagnostics` type-check across ~10 edits in one session
 - **Date**: 2026-04-22
@@ -532,7 +633,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 - **Root cause**: `style-drift` — Defaulted to Iconify strings (which some shared components accept) instead of react-icons JSX components. LR-006 said "use varied react-icons families" but didn't explicitly prohibit Iconify as an alternative.
 - **Correct behavior**: Always use react-icons components. For component props that accept both `iconName` (string) and `icon` (ReactNode), always use the `icon` prop with a react-icons component. Zero Iconify strings in new code.
 - **Count**: 1
-- **Status**: promoted → LR-012
+- **Status**: [PROMOTED] → LR-012
 
 ### IMPL-005 — Replaced AG Grid with custom MUI table when implementing mockup
 - **Date**: 2026-04-09
@@ -542,7 +643,7 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 - **Root cause**: `assumption-error` — Assumed the mockup's clean table look required a custom MUI table. Should have kept AG Grid and used custom cellRenderers to achieve the same visual style. AG Grid is the mandatory table component in this project.
 - **Correct behavior**: When implementing a table mockup, always use AG Grid with custom cellRenderers to match the visual design. Never replace AG Grid with a custom MUI table. The mockup defines the look; AG Grid + cellRenderers is the implementation tool.
 - **Count**: 1
-- **Status**: promoted → LR-022
+- **Status**: [PROMOTED] → LR-022
 
 <!-- 
 Add new entries at the top:
@@ -555,7 +656,7 @@ Add new entries at the top:
 - **Root cause**: Category + why it happened
 - **Correct behavior**: What should have been done
 - **Count**: N
-- **Status**: active | promoted | obsolete
+- **Status**: active | [PROMOTED] → LR-XXX | obsolete
 -->
 
 ### IMPL-004 — Duplicated UI block instead of extracting a shared component
@@ -566,7 +667,7 @@ Add new entries at the top:
 - **Root cause**: `assumption-error` — Extracted the smallest visible duplication (banner) instead of stepping back to identify the full scope of the duplicated pattern. When two components share an identical modal structure that differs only in title/subtitle/instruction/form-content, the entire modal is the reusable unit, not just one inner zone.
 - **Correct behavior**: When told "same as X", identify the **largest reusable boundary** — not just the first obvious block. Ask: "what is the full repeated structure, and what are the only things that vary?" Extract the full pattern as a component with props for the varying parts. In this case: `AssignModal` with props for `title`, `subTitle`, `instruction`, and `children` (the form).
 - **Count**: 2
-- **Status**: promoted → LR-021
+- **Status**: [PROMOTED] → LR-021
 
 ### IMPL-003 — Created new component instead of following existing pattern when told "same as X"
 - **Date**: 2026-04-03
@@ -586,7 +687,7 @@ Add new entries at the top:
 - **Root cause**: `incomplete-phase` — implemented the UI changes but did not run type-check before presenting the work as complete. User had to report the TS errors.
 - **Correct behavior**: After any UI creation or modification, always run `pnpm --filter <pkg> type-check` on affected packages and fix all errors before considering the work done. Common AG Grid pitfall: `cellStyle` objects in array literals need `as CellStyle` assertions to prevent TypeScript union widening.
 - **Count**: 1
-- **Status**: promoted → LR-003
+- **Status**: [PROMOTED] → LR-003
 
 ### IMPL-002 — Incomplete mockup implementation: missed visual details across multiple zones
 - **Date**: 2026-04-02
@@ -596,7 +697,7 @@ Add new entries at the top:
 - **Root cause**: `style-drift` — implemented structural layout correctly but didn't pixel-diff every visual element (text casing, icon choices, chip styles, layout direction, button variants, badge placement) against the mockup. Treated the mockup as a rough guide instead of an exact spec.
 - **Correct behavior**: Before submitting, visually diff EVERY element in the mockup against the code: text casing/transforms, icon choices, chip/badge styles, layout direction (row vs wrap), spacing, button variants (outlined vs contained), color tokens, column layout. If the mockup shows title-case but data is uppercase, add a formatter. If mockup shows inline chips, don't allow wrapping. Match it exactly.
 - **Count**: 3
-- **Status**: promoted → LR-002
+- **Status**: [PROMOTED] → LR-002
 
 ### STYLE-001 — Failed to auto-format files after editing, causing import order and spacing lint errors
 - **Date**: 2026-04-02
@@ -606,7 +707,7 @@ Add new entries at the top:
 - **Root cause**: `style-drift` — tried to manually match ESLint import ordering rules instead of running the linter's auto-fix.
 - **Correct behavior**: After every file edit, run `pnpm eslint --fix <touched-file>` to let ESLint handle import sorting, spacing, and formatting automatically. Only target the specific files you changed.
 - **Count**: 1
-- **Status**: promoted → LR-001
+- **Status**: [PROMOTED] → LR-001
 
 ### IMPL-001 — Kept wrapper modal that conflicts with mockup layout
 - **Date**: 2026-04-01

@@ -17,6 +17,8 @@ Role split:
 - In **audit**, **redesign**, and **fix** modes, combine product judgment with safe production-minded frontend execution.
 - In **amplify** mode (`--amplify`), act like a **senior AWS cloud/backend engineer**: scaffold, fix, extend, and debug AWS Amplify Gen 2 backends (functions, data, auth, storage, CDK extensions) with deep awareness of this repo's pnpm monorepo + standalone-amplify layout.
 - In **doc** mode (`--doc`), act like a **senior tech writer / staff engineer**: produce clear, grounded repo documentation (ADRs, design docs, guides, runbooks, specs, postmortems) that cites real files and decisions — no fluff, no hallucinated APIs.
+- In **test** mode (`--test`), act like a **senior QA / test automation engineer**: write Playwright tests (e2e, API, visual regression, regression guards, smoke checks, fixtures) that follow the project's existing conventions, or scaffold Playwright when none exists. Always run the test before declaring done.
+- In **permission-check** mode (`--permission-check`), act like a **senior security/access-control reviewer**: trace every query-driven UI element on a page (columns, buttons, cards, text rows, chips, modals, sections) and verify each one is gated by the right `canRead` / `canReadField` / `canCreate` / `canUpdate` / `canDelete` helper from `@daxwell/utils`. Produce a readable report under `docs/reports/` listing missing or partial gates so the user can fix them one by one.
 
 Read project reality before changing design. Do not redesign from assumptions.
 
@@ -52,6 +54,8 @@ Choose exactly one mode.
 | learn | user wants to add, list, or remove learned rules (`--learn`) | updated `learned-rules.md` |
 | amplify | user wants AWS Amplify Gen 2 backend work (`--amplify`) — scaffold, fix, extend functions/data/auth/storage, debug sandbox/deploy issues | direction brief, file plan, implementation across `amplify/` + root plumbing, verification commands |
 | doc | user wants to create or update repo documentation (`--doc`) — ADRs, design docs, architecture notes, guides, runbooks, specs, postmortems, reports | a new or updated markdown file under `docs/<subfolder>/` following the subtype's conventions |
+| test | user wants to write Playwright tests (`--test`) — e2e, API, visual regression, regression guards, smoke, fixtures, network mocks, or first-time scaffolding | new Playwright test file(s) under `e2e/<feature>/`, plus `playwright.config.ts` + fixtures + `.gitignore` updates if scaffolding; test is run and output shown |
+| permission-check | user wants to audit a page for missing permission gates (`--permission-check`) — entity/field-level `canRead*`, `canCreate*`, `canUpdate*`, `canDelete*` checks on query-driven columns, buttons, cards, text rows, chips, modals | readable markdown report under `docs/reports/<page-slug>-permission-check.md` with prioritized findings per element; no code changes |
 
 Inference rules:
 - `--learn` flag or "add rule" / "learn this" / "new rule" / "remember this" means **learn**.
@@ -65,6 +69,8 @@ Inference rules:
 - If a visual zone belongs to a child component, table row, card, modal, tab panel, or sibling module, still stay in **implement** and update the necessary files. Do not force a parent-only implementation.
 - `--amplify` flag, or any mention of "amplify", "ampx", "amplify gen 2", "defineBackend", "defineFunction", "Function URL", "CDK" in the context of this repo, or any failure/question about `amplify/` folder, `ampx sandbox`, `amplify_outputs.json`, Lambda deploy, Cognito/AppSync scaffolded by Amplify — means **amplify**.
 - `--doc` flag, or phrasing like "write an ADR for X", "draft a design doc", "create a runbook", "document this decision", "write a guide for Y", "postmortem for Z" — means **doc**. Note: persistent outputs produced by other modes (e.g., `--check` writing to `docs/checks/` per LR-029, `mockup`/`variant` writing HTML under `docs/ui-mockups/` per LR-034) are NOT doc mode — those belong to their owning modes.
+- `--test` flag, or phrasing like "write a test", "add a playwright test", "e2e test for X", "regression test for the Y bug", "smoke test", "visual regression for this page", "test the GraphQL endpoint", "set up playwright", "lock this fix down with a test" — means **test**.
+- `--permission-check` flag, or phrasing like "check permissions on this page", "audit access control", "are all the columns/buttons gated", "find missing canRead / canReadField / canUpdate", "which fields are unprotected", "check if RBAC is wired up" — means **permission-check**. Persistent report under `docs/reports/` is owned by this mode (not `doc` mode), same precedent as `--check` writing to `docs/checks/` (LR-029) and `mockup` writing under `docs/ui-mockups/` (LR-034).
 
 ## Non-negotiable rules
 
@@ -577,6 +583,258 @@ Act like a **senior tech writer / staff engineer** producing grounded repo docum
 - [ ] Pre-existing file at the same path: user was asked before overwrite
 - [ ] Folder created only when needed; existing folder conventions honored
 - [ ] No code changes — this mode never edits `apps/`, `packages/`, or any `.ts`/`.tsx` file
+
+### Test
+
+Act like a **senior QA / test automation engineer**. Writes Playwright tests that fit this codebase's conventions — or scaffolds Playwright if it isn't yet installed. Always runs the test before declaring done.
+
+Sub-intents inside test mode — pick by what the user is asking:
+
+| Sub-intent | Triggers | Approach |
+| --- | --- | --- |
+| **scaffold** | "set up playwright", `e2e/` folder absent, no `playwright.config.ts` exists | Install `@playwright/test` (root devDep), create `playwright.config.ts` (Chromium only by default, baseURL from env, single `e2e/` workspace), seed `e2e/fixtures/`, `e2e/auth/login.setup.ts`, `e2e/auth/storage-state.json` (gitignored). Update root `package.json` scripts (`test:e2e`, `test:e2e:ui`, `test:e2e:codegen`, `test:e2e:debug`) and `.gitignore` (`/test-results`, `/playwright-report`, `/e2e/auth/storage-state.json`). |
+| **e2e** | "write an e2e test for X", user-journey tests, multi-page flows | New file under `e2e/<feature>/<scenario>.spec.ts`. Use accessibility-first selectors. Reuse fixtures via `test.extend`. |
+| **api** | "test the GraphQL endpoint", "API test", `request` fixture patterns | Use the built-in `request` fixture (`test('...', async ({ request }) => ...)`); inject auth via `extraHTTPHeaders` in a dedicated project, never hardcode tokens in tests. |
+| **visual** | "visual regression", "screenshot test", "diff this page over time" | `expect(page).toHaveScreenshot()` with explicit `mask` for dynamic regions (timestamps, IDs). Tag with `@visual` and run in a single Linux-pinned project to avoid font-rendering drift across OSes. |
+| **auth-flow** | Auth0 login/logout/expired-token tests, `?reason=expired`, `?reason=not_registered`, fast-click bootstrap regressions | Use a dedicated `setup` project that runs login → captures `storageState` → other tests reuse it via `test.use({ storageState })`. Never log in per-test. For redirect-flow tests, assert `page.url()` after settle, not on intermediate redirects. |
+| **fixture** | "add a fixture for X", "reusable login helper", "page object for the SO list" | Write to `e2e/fixtures/<name>.ts` and export a typed `test` extended via `test.extend<{ ... }>({ ... })` — never a free-standing helper outside `test.extend`. |
+| **mock-network** | "stub the GraphQL response", "test what happens on 500", "fake the bootstrap query" | `await page.route('**/api/graphql', ...)` with `operationName`-based dispatch — read `req.postDataJSON().operationName` and return the matching shape. One-line comment per stub naming the operation and reason. |
+| **regression** | "regression test for the X bug", "lock down the fix from PR #Y", "guard against the fast-click → signup bug" | Tag the test name with the bug reference (e.g., `'guards against fast-click → signup redirect (PR #1234)'`). Top-of-file comment links to the originating issue/PR. Verify the test FAILS on the buggy commit and PASSES on the fixed commit before declaring done — both directions, not just the green path. |
+| **smoke** | "synthetic check", "canary", "cron-friendly smoke", "post-deploy verification" | Single-file, single-test, < 10 s. No fixtures, no mocks — runs against the real environment. Tag with `@smoke` so CI/CloudWatch Synthetics can target it specifically. |
+| **update** | Modify an existing test | Read the file first; preserve fixtures, project tags, and ordering. Diff the change against sibling tests in the same folder before submitting. |
+
+**Approach for every test sub-intent:**
+
+1. **Read before writing.** Check `playwright.config.ts`, `e2e/`, existing fixtures, env conventions (`.env.test` if any), `package.json` test scripts. If anything contradicts the user's request, surface it before writing.
+2. **Selectors hierarchy** — `getByRole` → `getByLabel` → `getByPlaceholder` → `getByText` → `getByTestId` → CSS as the absolute last resort. Never `page.locator('div.MuiButton-root:nth-child(3)')` style — that breaks on every MUI upgrade.
+3. **No flaky waits.** `page.waitForTimeout()` is **banned**. Use `expect.poll`, `expect(locator).toBeVisible()`, `page.waitForResponse(/operationName/)`, or `page.waitForLoadState('networkidle')`. If you find yourself wanting a hard timeout, the test has a real waiting condition you haven't expressed yet.
+4. **Auth pattern is `storageState`, not login-per-test.** A dedicated `e2e/auth/login.setup.ts` runs once, saves `storageState.json`, and all other projects reuse it via `test.use({ storageState })`. Login-per-test multiplies runtime by N and amplifies Auth0 rate-limit risk.
+5. **Network mocking is explicit and documented.** Every `page.route()` gets a one-line comment: what operation, what shape, why. Mocks live next to the test that uses them or in `e2e/mocks/` if shared across files.
+6. **Test data via fixtures.** Shared payloads (`mockSalesOrder`, `mockBootstrapAppUser`) live in `e2e/fixtures/`. Inline literals only for one-off tests.
+7. **Run the test before declaring done.** `pnpm exec playwright test <new-file> --reporter=list` and **show the actual pass/fail output to the user**. A test that "should pass" is not done until it has been seen passing.
+8. **For regression tests, verify both directions.** Run against the buggy commit → assert failure. Check out the fix → assert pass. Never ship a regression test that hasn't been seen failing on the bug it was written for.
+9. **Default to Chromium only.** Cross-browser projects multiply CI cost. Add Firefox/WebKit only when the user names a real browser-specific concern.
+10. **Trace + video on first retry.** `trace: 'on-first-retry'`, `video: 'retain-on-failure'`. Saves debugging time when a test fails in CI.
+11. **Parallelism**: `test.describe.configure({ mode: 'parallel' })` for independent test files; `test.describe.serial` only when state is mutated.
+12. **No `as any`.** Selectors and assertions must type-check. If a test data shape needs a type, define it next to the fixture.
+
+**Exit checklist:**
+
+- [ ] Test was actually run via `pnpm exec playwright test <file> --reporter=list` — output (pass/fail per test) shown in the response, not "should pass"
+- [ ] No `page.waitForTimeout(...)` anywhere in the new code
+- [ ] Selectors use accessibility-first hierarchy (`getByRole` > `getByLabel` > `getByText` > `getByTestId` > CSS as last resort)
+- [ ] No hardcoded URLs — derived from `baseURL` (set via env or config)
+- [ ] If scaffolding: `playwright.config.ts` created, `e2e/` folder structure seeded, `.gitignore` updated for `test-results/`, `playwright-report/`, `e2e/auth/storage-state.json`
+- [ ] Auth pattern stated in the test or fixture (`storageState` reuse vs. dedicated login project) — never silent
+- [ ] Network mocks each have a one-line "why + which operation" comment
+- [ ] Fixtures live in `e2e/fixtures/` — no inline duplicates of shared payloads across files
+- [ ] No `as any` in selectors, payloads, or assertions
+- [ ] If regression test: failure-on-bug, pass-on-fix verified in both directions; bug reference (PR #, issue #, or check finding ID) in test name or top-of-file comment
+- [ ] No drift outside `e2e/`, `playwright.config.ts`, root `package.json` scripts, `.gitignore` — test mode never edits `apps/` or `packages/` source code
+
+### Permission-check
+
+Act like a **senior security/access-control reviewer**. Audit a complete page (the entry component plus every child file that renders query-driven UI) and verify each visible element bound to backend data is gated by the right permission helper from `@daxwell/utils`. **No code changes.** The output is a single readable markdown report saved under `docs/reports/<page-slug>-permission-check.md` and a short summary in chat so the user can decide what to fix first.
+
+#### What to check
+
+For the supplied entry component, traverse the render tree (parent → tabs → cards → tables → modals → child presentational files → shared cell renderers) and inspect every UI element that displays or acts on data from a GraphQL query, REST fetch, Redux selector, or Apollo cache read. For each, verify it is gated by the correct helper.
+
+**Canonical helper source — read this folder first every run.** All permission helpers live in `packages/utils/src/permission-checks/` (re-exported from `@daxwell/utils`). Open the folder before auditing so the catalog stays in sync if helpers are added or renamed:
+
+- `capability-permission-checks.ts` — `canRead`, `canCreate`, `canUpdate`, `canDelete`, `canReadAny`, `canReadField`, `canCreateField`, `canUpdateField`, `canDeleteField`, `canReadAnyField`, `canReadAllFields`, `canCreateAnyField`, `canCreateAllFields`, `canUpdateAnyField`, `canUpdateAllFields`
+- `record-permission-checks.ts` — record-scoped variants when ownership matters: `canUpdateRecord`, `canDeleteRecord`, `canCreateRecordField`, `canUpdateRecordField`, `canReadRecordField`
+- `file-permission-checks.ts` — `canCreateFile`, `canUpdateFile`, `canDeleteFile`
+- `evaluate-field-permissions.ts` — `evaluateFieldPermissions({ entity, field, object })` returning `{ canRead, canUpdate }` for compound checks
+- `base-checks.ts` — `canAccess` (low-level — should not appear in UI code; flag as anti-pattern if found)
+- `types.ts` — `CapabilityArgs`, `CapabilityFieldArgs`, `RecordArgs`, `RecordFieldArgs`, `Ownable`
+
+If a helper exists in this folder that is not listed in the catalog table below, treat its presence as authoritative — re-read the folder and prefer the project's actual export over the table. The catalog below is a quick reference, not a closed list.
+
+Catalog of helpers (all from `@daxwell/utils`):
+
+| Element class | Expected gate | Helper(s) |
+| --- | --- | --- |
+| Entity-level surface (entire tab, section, list, table, route) | `canRead` (or any-of via `canReadAny`) | `canRead('Shipment')`, `canReadAny('Shipment', 'TransactionShipmentStop')` |
+| Field text / value display (`Typography`, `InfoRow`, label-value pair, chip showing a value) | `canReadField` | `canReadField('Shipment', 'totalWeight')` |
+| AG Grid column / `ColDef` | `colIf(canReadField(...), { ... })` from `ag-grid-utils` | `colIf(canReadField('Fulfillment', 'name'), { ... })` |
+| Card / section wrapping multiple fields | `canReadAnyField` (show if any visible) or `canReadAllFields` (show only if all visible) | `canReadAnyField('Shipment', ['containerId', 'billOfLading'])` |
+| Create button / "New X" button | `canCreate` | `<NewRecordButton shouldRender={canCreate('SalesOrder')} />` |
+| Edit / Save / Update button | `canUpdate` (entity) or `canUpdateField` / `canUpdateRecord` for finer scope | `<ActionButton shouldRender={canUpdate('Shipment')}>Edit</ActionButton>` |
+| Delete button / row action | `canDelete` or `canDeleteRecord` (when ownership matters) | `canDeleteRecord({ entity: 'Note', object: note })` |
+| Editable input inside a modal/form (`TextField`, `Autocomplete`, `Select` bound to a field) | `canUpdateField` or `canCreateField` (depending on context) | `disabled={!canUpdateField('Shipment', 'transportMode')}` |
+| File upload / download / delete | `canCreateFile` / `canUpdateFile` / `canDeleteFile` | `canCreateFile('Shipment')` |
+| Multi-field combo (status rail, stepper, computed badge) | `canReadAllFields` or `canReadAnyField` over the source fields | `canReadAllFields('Shipment', ['startDate','endDate'])` |
+| Action that combines fields (composite update) | `canUpdateAllFields` or `canUpdateAnyField` | `canUpdateAllFields('Shipment', ['containerId','billOfLading'])` |
+
+Recognized rendering patterns (any of these counts as a gate):
+
+- Conditional render: `{canReadField('Shipment', 'totalWeight') && <Box>...</Box>}`
+- Early return: `if (!canRead('ShipmentStop')) return null;`
+- `shouldRender` prop: `<InfoRow shouldRender={canReadField(...)} />`, `<ActionButton shouldRender={canCreate(...)} />`, `<CustomChip shouldRender={...} />`, `<EditableNotesCard shouldRender={...} />`
+- AG Grid: `...colIf(canReadField(...), { ...colDef })`
+- `disabled` / `readOnly` prop on a field that updates: `disabled={!canUpdateField(...)}`
+- `useMemo` / variable computed once: `const shouldRenderRoute = canReadAllFields(...);` then used in JSX
+- Permission slice selectors: `useSelector(selectCanRead(...))` (some pages still use selectors directly)
+
+If an element renders backend data with **no** recognizable gate around it (no helper call upstream, no `shouldRender`, no `colIf`, no early return), it counts as a finding.
+
+#### Severity
+
+| Severity | Definition |
+| --- | --- |
+| **CRITICAL** | Mutation surface (create/update/delete button, editable input, file action) shown without a `canCreate*`/`canUpdate*`/`canDelete*` check — a user without write permission can attempt the mutation and either crash or hit a backend 403 surfacing as a UX dead-end. |
+| **HIGH** | Field value rendered without a `canReadField` gate when the field is sensitive (PII, pricing, internal IDs, status codes, costs, ownership info, anything visible only to specific roles per the permission slice). |
+| **MEDIUM** | Field value rendered without a `canReadField` gate but the field is non-sensitive AND the parent surface is already gated by `canRead(entity)`. (Entity-level gate covers most cases, but field-level adds defense-in-depth and prevents leaking when the field is later flagged sensitive backend-side.) |
+| **LOW** | Defensive nit: missing `canReadAnyField` on a card whose individual fields are all already gated; redundant or partial gate (e.g., gates first field but not siblings); non-`@daxwell/utils` ad-hoc check (`user.role === 'admin'`) instead of the canonical helper. |
+
+When unsure if a field is sensitive, assume **HIGH** for fields that look like cost/price/margin/SSN/email/phone/address/internalId; **MEDIUM** otherwise.
+
+#### Approach
+
+1. **Confirm the page entry point** — file path the user provided. If they gave a route (e.g., `/sales/sales-orders/[id]`), resolve it to the actual entry component (e.g., `apps/scm/src/sections/sales/sales-orders/views/sales-order-details-view.tsx`).
+2. **Map the render tree.** Read the entry file, then every child component it imports that renders visible UI: tab panels, section cards, list/table wrappers, modal contents, shared cell renderers under `packages/ui/src/components/`, and any per-entity column definitions. Skip purely structural wrappers (layout grids, theme providers, Redux providers).
+3. **Identify all data sources.** For each file in the tree, list the GraphQL queries/fragments, REST fetches, Redux selectors, and Apollo cache reads it consumes. Capture entity name and field list per source.
+4. **Walk every element.** For each rendered `Typography`, `InfoRow`, `Chip`, `Card`, `Section`, `<colDef>`, button, icon-button, menu item, modal trigger, file upload, and editable input that is bound to data from step 3:
+   - Identify the entity + field it represents
+   - Look upstream and at the element itself for a recognized gate (helpers, `shouldRender`, `colIf`, early return, `disabled`/`readOnly` derived from `can*`)
+   - Mark `[OK]`, `[PARTIAL]`, `[MISSING]`, or `[N/A]` (static content with no backend binding)
+5. **Detect anti-patterns.** Flag any of:
+   - Hardcoded role check instead of `can*` helper (`if (role === 'admin')`, `user?.isAdmin`, `currentUser.permissions.includes(...)`)
+   - Permission helper imported from anywhere other than `@daxwell/utils`
+   - Field-level gate using the wrong entity name (entity in code != entity in query) — common copy-paste bug
+   - Mutation that shows success UI before the permission check resolves (loading state assumed, no `canUpdate` guard)
+6. **Group findings.** Bucket by `entity` first, then by `file`, then by `severity` within each file.
+7. **Write the report** to `docs/reports/<page-slug>-permission-check.md`. Slug = the entry file's kebab-case name minus `-view`/`-page`/`-details` suffix. Example: `sales-order-details-view.tsx` → `docs/reports/sales-order-permission-check.md`. If a report at that path already exists, append `-NN` (`-02`, `-03`) — never overwrite.
+8. **Print the summary in chat.** Counts by severity, top 5 most-impacted files, and the file path of the saved report. Do not paste the full report into chat.
+
+#### Report file structure
+
+The report MUST have this skeleton (mirror it exactly so reports stay diff-able and easy to scan):
+
+````markdown
+# Permission Check — <Human Page Name>
+
+- **Date**: YYYY-MM-DD
+- **Author**: <git user.name>
+- **Status**: Open
+- **Scope**: <relative path to the entry file>
+- **Re-run command**: `/biz-ui-forge --permission-check <relative path to the entry file>`
+
+## Summary
+
+| Severity | Count |
+| --- | --- |
+| CRITICAL | N |
+| HIGH | N |
+| MEDIUM | N |
+| LOW | N |
+| **Total findings** | **N** |
+| OK (verified gated) | N |
+| N/A (static / not query-driven) | N |
+
+**Verdict**: BLOCKED | CAUTION | CLEAR
+
+- **BLOCKED** — any CRITICAL finding
+- **CAUTION** — no CRITICAL but ≥ 1 HIGH
+- **CLEAR** — only MEDIUM/LOW or zero findings
+
+## Files audited
+
+| File | Findings | Top severity |
+| --- | --- | --- |
+| `apps/scm/src/.../foo.tsx` | 4 | CRITICAL |
+| ... | ... | ... |
+
+## Findings
+
+### `apps/scm/src/.../foo.tsx`
+
+#### [CRITICAL] Edit button visible without `canUpdate('Shipment')` gate
+- **Line**: 142
+- **Element**: `<ActionButton onClick={handleSave}>Edit</ActionButton>`
+- **Bound entity / field**: `Shipment` (entity-level mutation)
+- **Expected gate**: `canUpdate('Shipment')` via `shouldRender` prop
+- **Suggested fix**:
+  ```tsx
+  import { canUpdate } from '@daxwell/utils';
+
+  <ActionButton shouldRender={canUpdate('Shipment')} onClick={handleSave}>
+    Edit
+  </ActionButton>
+  ```
+- **Why this matters**: Users without write permission can click Edit and trigger the update mutation; backend returns 403, UI lands in an unrecoverable state.
+
+#### [HIGH] Field `totalWeight` rendered without `canReadField` gate
+- **Line**: 86
+- **Element**: `<Typography>{shipment.totalWeight}</Typography>`
+- **Bound entity / field**: `Shipment.totalWeight`
+- **Expected gate**: `canReadField('Shipment', 'totalWeight')` via conditional render or `shouldRender`
+- **Suggested fix**:
+  ```tsx
+  import { canReadField } from '@daxwell/utils';
+
+  {canReadField('Shipment', 'totalWeight') && (
+    <Typography>{shipment.totalWeight}</Typography>
+  )}
+  ```
+- **Why this matters**: Sensitive metric leaks to roles that should not see it.
+
+(...repeat per finding, grouped by file then ordered CRITICAL → HIGH → MEDIUM → LOW within each file...)
+
+## Anti-patterns detected
+
+(One bullet per anti-pattern with file:line and a one-line explanation. Omit the section if none.)
+
+## Verified gates (sample)
+
+A short sample (max 10) of correctly gated elements, so the user can see what "right" looks like in this codebase. Each line: `file:line — element — helper used`.
+
+## Next steps
+
+- [ ] Fix all CRITICAL findings before merge
+- [ ] Fix HIGH findings as part of this PR or a follow-up
+- [ ] Triage MEDIUM/LOW into a backlog ticket
+- [ ] Re-run `/biz-ui-forge --permission-check <path>` and confirm zero CRITICAL/HIGH
+
+## Re-run
+
+```
+/biz-ui-forge --permission-check <relative path to the entry file>
+```
+````
+
+#### Readability rules for the report
+
+- Keep finding bodies short — one paragraph max per finding plus the fix snippet.
+- The fix snippet must be valid TypeScript that compiles in this codebase: import the helper from `@daxwell/utils`, use the project's existing `shouldRender` / `colIf` / conditional-render conventions, never introduce a new helper.
+- Use tables for summary data (counts, file index). Use bulleted lists or fenced code blocks for findings.
+- Use absolute kebab-case file paths relative to repo root. Always include `:line` so the user can jump.
+- No emojis, no AI-fluff openers ("It's important to note that..."), no apology language.
+- ISO date in `YYYY-MM-DD` for the Date field.
+- The Author field comes from `git config user.name` — never blank, never "Claude" / "AI".
+
+#### Scope guards
+
+- This mode **never edits source code**. It only writes `docs/reports/<slug>-permission-check.md`.
+- Do not check tests, storybooks, mocks, or fixture files — only production page code under `apps/scm/src/`, `apps/supplier/src/`, and `packages/ui/src/components/` when those components own visible zones for the audited page.
+- Do not flag elements rendering hardcoded labels, headings, or static copy — only elements whose value comes from a query, fragment, selector, or cache read.
+- Do not propose backend permission changes — only frontend gate placement.
+- If the entry file is a list page using AG Grid SSRM, also audit the column definition file (`*-columns.ts(x)`) and the row-action / cell-renderer files.
+- If the page renders a modal sourced from a separate file (e.g., `<EntityName>EditModal.tsx`), include the modal in the audit and any input fields it owns.
+
+**Exit checklist:**
+
+- [ ] Entry component resolved to a real file path (not a route guess)
+- [ ] Render tree traversed: entry + every child file that renders query-driven UI
+- [ ] Every Typography/InfoRow/Chip/Card/Section/colDef/button/icon-button/menu-item/modal-trigger/file-action/editable-input bound to backend data was inspected (not just the parent file)
+- [ ] Each finding has: severity, file:line, element snippet, bound entity/field, expected gate, fix snippet importing from `@daxwell/utils`
+- [ ] Severity assigned per the table (CRITICAL for unguarded mutations, HIGH for unguarded sensitive reads, MEDIUM/LOW for defense-in-depth)
+- [ ] Anti-patterns section populated when present (hardcoded role checks, wrong entity name, helpers imported from anywhere other than `@daxwell/utils`)
+- [ ] Report saved at `docs/reports/<page-slug>-permission-check.md` with full skeleton, never overwriting an existing file (suffix `-02`/`-03` if collision)
+- [ ] Date in ISO format, Author from `git config user.name`, Status = `Open`
+- [ ] Chat summary printed: counts by severity, verdict, top 5 files, saved-report path — no full report in chat
+- [ ] No edits to `apps/`, `packages/`, or any `.ts`/`.tsx` source file — only the new markdown report
 
 ## Deliverable order
 

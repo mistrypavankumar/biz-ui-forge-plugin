@@ -6,6 +6,72 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 
 ---
 
+### LR-041 — Two permission-helper folders exist: `permission-checks/` (static) and `permission-hooks/` (reactive). Use the right one for the call site, and audit BOTH in permission-check mode
+- **Promoted from**: User explicit instruction (2026-05-08)
+- **Category**: incomplete-phase
+- **Modes**: all
+- **Rule**: `@daxwell/utils` exposes two parallel permission APIs that share an underlying implementation but differ in reactivity contract. Treat them as siblings — never as duplicates to be consolidated.
+  1. **`packages/utils/src/permission-checks/`** — static helpers: `canRead`, `canCreate`, `canUpdate`, `canDelete`, `canReadField`, `canCreateField`, `canUpdateField`, `canDeleteField`, `canReadAny`, `canReadAnyField`, `canReadAllFields`, `canCreateAnyField`, `canCreateAllFields`, `canUpdateAnyField`, `canUpdateAllFields`, plus record/file variants. They read `tryGetStore().getState()` synchronously and **do not subscribe** to redux. Safe outside React render. Import path: `@daxwell/utils/permission-checks`.
+  2. **`packages/utils/src/permission-hooks/`** — reactive React hooks: `useCanRead`, `useCanCreate`, `useCanUpdate`, `useCanDelete`, `useCanReadField`, `useCanCreateField`, `useCanUpdateField`, `useCanDeleteField`, `useCanReadAny`, `useCanReadAnyField`, `useCanReadAllFields`, `useCanCreateAnyField`, `useCanCreateAllFields`, `useCanUpdateAnyField`, `useCanUpdateAllFields`, plus record/file/file-set variants. They wrap each static helper in `useAppSelector(() => canX(...))` so the component re-renders when the permission slice updates. Import path: `@daxwell/utils/permission-hooks`. (Folder was renamed from `permission-setups` on 2026-05-08; never reference the old path.)
+  3. **When to use which**:
+     - **Inside JSX / component render body / top-level body of a function component** → use the **hook** (`useCanRead`, `useCanReadField`, ...). Static fns at this level capture a snapshot and miss permission hydration / sandbox toggles / role swaps.
+     - **Inside event handlers, `onClick`/`onSubmit` callbacks, `useCallback` bodies, AG Grid `cellRenderer` bodies, route-resolver utilities, redux thunks, anywhere outside React render** → use the **static** fn (`canRead`, `canReadField`, ...). Hooks aren't legal here and don't help — there's no render to react to.
+     - **AG Grid `colDef` builders inside `useMemo`** → static via `colIf(canReadField(...), { ...colDef })`. The `useMemo` already re-runs when its deps change; the surrounding component is the subscription unit if you also need reactivity, but `colDef` definition itself stays static.
+  4. **Permission-check mode (`--permission-check`) MUST inspect both folders.** The "Canonical helper source" step in SKILL.md lists `permission-checks/`; treat `permission-hooks/` as equally canonical. A page's gates may use either form interchangeably — `canRead('Shipment')` and `useCanRead('Shipment')` are both valid gates. Recognize both when scanning for `[OK]`/`[MISSING]`. Anti-pattern: hook used in callback (illegal Rules of Hooks); static used in JSX render path where reactivity matters (silent staleness bug).
+  5. **Recognized rendering patterns (extends SKILL.md's list)** — also count these as gates:
+     - Hook destructure: `const canEditShipment = useCanUpdate('Shipment');` then `<ActionButton shouldRender={canEditShipment} />`
+     - Hook field gate: `const canSeeWeight = useCanReadField('Shipment', 'totalWeight'); return canSeeWeight && <Typography>{...}</Typography>;`
+     - Hook on `disabled`: `<Field.Text disabled={!useCanUpdateField('Subsidiary', 'name')} />` — though prefer extracting to a const for readability.
+  6. **Skip-on-`!canRead` pattern is real and preferred.** When a list page uses `useQuery(GET_X, { skip: !useCanRead('X') })`, the hook form is required because the skip evaluation re-runs on each render — static `canRead()` would lock the skip value to whatever was true at first paint.
+  7. **Anti-patterns to flag in audits**:
+     - Static `canX` inside a render body where a hook would re-render correctly (silent stale gate)
+     - `useCan*` inside an event handler / `useCallback` body / `colDef` factory (Rules of Hooks violation)
+     - Permission helper imported from anywhere other than `@daxwell/utils/permission-checks` or `@daxwell/utils/permission-hooks` (e.g., importing from `@daxwell/utils` barrel violates LR-032)
+     - Mixed forms in the same file without a clear reason — pick one per file when the contexts allow it
+- **Why**: Two parallel APIs sharing an implementation but differing in contract is a foot-gun unless the audit understands both. Before this rule, `--permission-check` only listed `permission-checks/` as canonical, which meant audits would mark a page using `useCanRead` as "MISSING" or get confused about whether a hook counts as a gate. The 2026-05-08 rename from `permission-setups` to `permission-hooks` reinforced the need: the audit's authoritative-folder list must include both. The contracts also matter for correctness — `canRead()` in JSX without subscription leaves the UI stale when permissions hydrate after first paint (sandbox toggle, lazy fetch via `fetchPermissionsIfNeeded`, role change). Hooks fix that. Both must coexist; audits must cover both.
+
+---
+
+### LR-040 — Permission-check audits must also inspect `modal-permission-map.ts` and `path-permission-map.ts`
+- **Promoted from**: User explicit instruction (2026-05-01)
+- **Category**: incomplete-phase
+- **Modes**: permission-check
+- **Rule**: Every `--permission-check` audit must additionally inspect two upstream scaffolding files in `packages/constants/src/mapping/` and confirm the audited entity / route is wired correctly. Skipping either is a hidden-permission-gap class of finding because both files feed the runtime permission system that every `canRead` / `canCreate` / `canUpdate` / `canDelete` helper relies on. The component-level gates can look perfect and still misbehave if these two files are wrong.
+  1. **`packages/constants/src/mapping/modal-permission-map.ts`** — verify, when the audited page renders or triggers a global modal (i.e., dispatches `openModal('<EntityName>')` and `apps/scm/src/components/global-modals.tsx` has a case for it):
+     - The entity name appears in the `ModalPermissionKey` union (top of file).
+     - The `modalPermissions` map has an entry for that key with the correct required permissions (typically `cur(EntityName)` or `curd(EntityName)` plus any FK/sub-entity permissions the modal's inputs depend on — `Address`, `Contact`, `EntitySubsidiary`, etc.).
+     - **Why this matters at runtime**: missing/stale entries mean the modal's required permissions are NOT preloaded into the Redux permission slice when the modal mounts, so per-field `canCreateField` / `canUpdateField` calls inside the modal return `false` for users who actually have the permission (false negative). The input is hidden even though the user should be able to use it.
+  2. **`packages/constants/src/mapping/path-permission-map.ts`** — verify for the audited route:
+     - Both `minimum` and `full` are populated using real entity-permission helpers (`readOnly('<EntityName>')`, `curd('<EntityName>')`, `cur('<EntityName>')`, `perm('<EntityName>', DbOperation.X)`), **never empty arrays**. `minimum` gates page access via `PermissionGuard`; `full` gates page-level rendering via `PagePermissionBoundary`. Empty arrays also break "Associated Pages" discovery in role permissions (LR-013 covers the broader nav-route checklist).
+     - The matching regex/segment exists in `packages/utils/src/permission-checks/get-permissions-for-path.ts`'s `ROUTES` array — without it `getPermissionsForPath` returns null and the guard's behavior is unpredictable.
+  3. **Findings severity for these files**:
+     - **CRITICAL** — route ungated (no entry in `permissionsByPath` AND no `ROUTES` matcher), modal entity not in `ModalPermissionKey` union, or `modalPermissions[entity]` missing entirely.
+     - **HIGH** — entry present but `minimum`/`full` is `[]`, `modalPermissions[entity]` lists wrong-entity permissions, or the FK/sub-entity preloads are missing for fields the modal renders.
+     - **MEDIUM/LOW** — minor drift (e.g., `cur` used where `curd` is more accurate but delete is not exposed in the UI).
+  4. The audit must happen **even when the audited page does not directly import these files** — they are out-of-band scaffolding the runtime reads. The permission-check report's "Files audited" table must list both mapping files (with `0` findings if correct), so the reader can see they were inspected, not skipped.
+  5. **Report-skeleton update**: add a top-level section **"Permission scaffolding files"** between "Files audited" and "Findings". Each scaffolding file gets a one-liner status:
+     - `[OK] packages/constants/src/mapping/modal-permission-map.ts:18 — 'InventoryAdjustment' in ModalPermissionKey; modalPermissions entry preloads InventoryAdjustment + Address + EntitySubsidiary`
+     - `[MISSING] packages/constants/src/mapping/path-permission-map.ts — no entry for inventoryAdjustment.root`
+     - `[PARTIAL] packages/constants/src/mapping/path-permission-map.ts:507 — minimum populated but full is []`
+     Per-file findings (with severity, line, fix) still go under the regular Findings section so they sort with the rest by severity.
+- **Why**: The 2026-05-01 inventory-adjustment list permission-check audited the page render tree and the modal correctly but stopped there. The scaffolding files sit upstream of every `canX` call: if `modalPermissions['InventoryAdjustment']` is wrong, the modal's per-field gates can silently return `false` for users with valid permissions because the relevant permissions were never preloaded into Redux. A route with empty `minimum`/`full` bypasses `PermissionGuard` entirely. These two files are the most common cause of the "permissions look right in the component but production behaves wrong" class of bug — the audit must include them or it is incomplete.
+
+---
+
+### LR-039 — Don't write comments
+- **Promoted from**: User explicit instruction (2026-05-01)
+- **Category**: style-drift
+- **Modes**: all
+- **Rule**: Default to writing **zero** comments in code. No leading `// what it does` lines, no `// because reason` rationale, no section banners, no JSDoc on internal helpers, no "// Backend rejects X" notes, no "// Re-seed the form when…" descriptions on `useEffect`s. Identifiers and code structure must carry the meaning. The only allowed exceptions are (a) a `TODO(name): <action>` tied to a real follow-up, (b) an `eslint-disable-next-line <rule>` with the rule named, or (c) a single short line marking a non-obvious workaround for a specific bug or external constraint that a future reader could not infer from the code itself. Supersedes LR-030.
+- **Why**: Comments rot. They paraphrase code, drift out of sync with edits, and add visual noise that hides the actual logic. The user has corrected this repeatedly — most recently on the inventory-adjustment modal where I added narrative comments like "// Backend rejects recordType in the input" and "// Re-seed the form whenever the modal opens". The right move is to let the mutation name and the `useEffect` deps express intent, and to leave a comment behind only when the code itself genuinely cannot.
+
+### LR-038 — Mockup retrofit dead-end: when implementation can't match the mockup on top of an existing shared component, build from scratch
+- **Promoted from**: User explicit instruction (2026-04-30)
+- **Category**: incomplete-phase
+- **Modes**: implement, redesign, fix
+- **Rule**: When implementing a mockup on top of an existing shared modal/component (e.g., `CreateEditDialogModal`, generic shells with their own header/footer/divider/animation chrome), and the user pushes back **two or more times** that the result still doesn't match the mockup, **stop retrofitting**. Build a new component from scratch — colocated under the feature folder (e.g., `components/modal/<feature>-modal.tsx`) — that owns its own dialog shell, header, body, and footer. Then port the entire logic surface verbatim: every `useQuery`/`useMutation`, every `useEffect`, every `react-hook-form` setup, every handler (`onSubmit`, `onCancellationRequest`, `onMarkForConfirm`, etc.), every loading-state aggregation, every `customActions` permission gate. Lose **zero** business behavior. Do not strip mutations, refetches, `invalidate` calls, `canUpdate`/`canRead` guards, or modal state hooks.
+- **Why**: Shared shells have built-in chrome — DialogContent's `dividers` line, motion-wrapped `<m.div overflow:hidden>`, fixed `min/max-height: 65vh`, hardcoded title/spanText typography, fixed footer padding — that override or compete with mockup tokens. Each retrofit attempt adds another layer of `dialogContentSx` overrides, `&::before` pseudos, and `hideDivider` flags chasing pixel parity, and still leaves mismatches because the underlying shell wasn't designed for the new layout. After two failed retrofits, sunk cost mounts and the user gets frustrated. A from-scratch component using `<Dialog>` + custom `<Box>` shell is faster to converge, easier to reason about, and doesn't risk regressing the dozens of other modals using the shared shell. The non-negotiable constraint is that **business logic is preserved exactly** — the rebuild is a chrome swap, not a feature rewrite.
+
 ### LR-037 — Canonical create/edit modal pattern: shared modal + useRequiredSchema + handleSubmit + nested-aware section meta
 - **Promoted from**: User explicit instruction (2026-04-29) after the location-modal session that established the full pattern
 - **Category**: incomplete-phase

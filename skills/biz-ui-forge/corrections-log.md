@@ -13,6 +13,71 @@ Raw corrections are auto-captured by the hook into `corrections-log.jsonl`. This
 
 ## Corrections
 
+### CR-011 — Shared `packages/ui` profile view fires SCM-specific `GET_ROLE_ROWS_FOR_APP_USER` in the supplier app instead of using the app-scoped `getSupplierAppRoleRows`
+- **Date**: 2026-05-12
+- **Status**: Active (count = 1)
+- **Category**: framework-leak
+- **Mode**: fix, implement
+- **What happened**: User opened the supplier-app `/dashboard/profile` and the network tab showed `GetRoleRowsForAppUser(appUserId: "1702", startRow: 0, endRow: 100)` firing. The supplier app has its own scoped query `getSupplierAppRoleRows(params: { startRow: 0, endRow: 5 })` defined at `apps/supplier/src/graphql/auth/role/queries.ts:43` that returns supplier-app-filtered roles, but the shared `UserProfileView` and `ProfileRoles` in `packages/ui/src/sections/profile/` unconditionally call the SCM-shaped `GET_ROLE_ROWS_FOR_APP_USER` regardless of which app consumes them. The page already pre-fetches `getSupplierAppRoleRows` and forwards `roleNameOverride`, but does not forward the role *list* or *count* — so the view re-queries the wrong endpoint.
+- **Root cause**: When a shared `packages/ui` component needs entity data and the two consumer apps need different queries (SCM = entity-wide cross-app rows; supplier = scoped to supplier app), the shared component cannot import an app-specific query (downward dependency from `packages/` → `apps/`). The fix is to make the shared component accept the data as a prop and let each consuming app fetch it with whichever query is appropriate. Previously the view assumed the SCM query was the canonical role-rows query and embedded it directly.
+- **Correct behavior**: For any shared `packages/ui` component that consumes data which differs in shape/source per app (roles, business units, permissions, app-specific resolvers), accept the data as a prop with sensible fallback to `appUser`-embedded fields. The shared component must never `import` from `@/graphql/...` or any path that resolves to a single app's GraphQL schema. The consuming app's `page.tsx` (server component) prefetches the right query and passes the result down. Specifically for user profile: `preloadedRoles?: IRole[]` and `preloadedRoleCount?: number` props gate the shared `GET_ROLE_ROWS_FOR_APP_USER` query (skip when preloaded). Mirror this prop pattern for any other app-divergent surface.
+
+### CR-010 — Did not push back when splitting a two-column stacked metadata layout into four columns and was asked to revert
+- **Date**: 2026-05-11
+- **Status**: Active (count = 1)
+- **Category**: assumption-error
+- **Mode**: fix
+- **What happened**: User asked to "split" the combined `Created By` (email + date stacked) and `Last Modified` (email + date stacked) columns into four separate columns. I executed the split exactly as asked. In the next turn the user asked to revert. Net: two churn edits on the same file across two turns.
+- **Root cause**: The original combined layout was a deliberate density choice — two metadata cells per user row instead of four — and visually communicates a "who + when" pair as one unit. Splitting halves the available width per cell and breaks the pairing. I should have flagged the density tradeoff before executing, or asked one clarifying question (e.g., "filterable separately, or only visual?").
+- **Correct behavior**: When a "split this column" request would double the column count of a grid that's already wide (4+ cols), surface the tradeoff in one sentence before splitting: "Splitting halves cell width and breaks the visual pair — keep stacked, split, or hybrid (separate `colId` for filtering but stacked renderer)?". Apply more broadly: any request that doubles a count (columns, fields, rows, sections) in a layout the user previously approved deserves a one-line tradeoff flag before execution.
+
+### CR-009 — Built duplicate Permission Inspector dev surface when an existing canonical PermissionSandbox already covered the use case
+- **Date**: 2026-05-08
+- **Status**: Active (count = 1)
+- **Category**: wrong-component
+- **Mode**: implement, fix
+- **What happened**: The user accepted my suggestion to build a "Permission Inspector" dev panel; I created `packages/ui/src/components/permission-inspector/` with a floating shield-icon FAB, a probe-stream panel, and a Cmd+Shift+P shortcut, mounted via `<PermissionInspector />` in `dashboard-dynamic-layer.tsx`. After visibility issues, I added the same functionality as a "Live" tab in the existing `PermissionSandbox` drawer. The user then said: "no need inspector-panel so remove it completely" — meaning the standalone files were always redundant.
+- **Root cause**: I did not grep for "permission-sandbox" or "PermissionSandbox" before designing the standalone inspector. The repo already had a comprehensive dev tool at `apps/scm/src/components/dax/dev-tools/permission-sandbox/` with FAB, drawer, popout, banner, four tabs (Per-entity / Overrides / Diff / Failed) and a Cmd+Shift+P shortcut. The Failed tab already showed denial reasons, sandbox chips, paired chips, and timestamps — strictly more than my standalone inspector. I built a parallel surface that competed for the same FAB position, the same keyboard shortcut, and the same probe ring buffer.
+- **Correct behavior**: When suggesting a "new dev tool" for permissions/probe/sandbox/diagnostics, **first grep the repo for related dev surfaces** (`grep -rln "sandbox\|inspector\|dev-tools\|debug-panel"`). If an existing surface already subscribes to the same data source (`subscribePermissionProbe`, `getPermissionProbeSnapshot`), extend it (new tab, new section) rather than building a parallel component. Suggestion mode in particular must not blueprint a new component without acknowledging what already exists. Applies to all repo-grep-able dev infrastructure: permission tools, GraphQL devtools, Apollo devtools, performance probes, role/sandbox simulators, etc.
+
+### CR-008 — Mounted shared `ViewsManagerSlot` at page level expecting its useEffect to orchestrate, ignoring the gridReady race
+- **Date**: 2026-05-08
+- **Status**: Active (count = 1)
+- **Category**: assumption-error
+- **Mode**: fix
+- **What happened**: To fix the broken "Custom" view on the transfer-order list, I mounted `<ViewsManagerSlot showControls={false}>` at page level on the assumption that its internal `useEffect` (which calls `applyViewColumnVisibility` etc.) would run as soon as the component mounted. The fix didn't work in the browser. The user pointed at the working sales-order list page and asked why my approach didn't match it.
+- **Root cause**: The slot's effect bails when `gridApi.current` is null on its first run, and React refs are NOT valid effect deps — so when the grid initializes after the slot mounts, the effect never re-runs. Sales-order solves this by holding a `gridReady` boolean **state** (set in `onGridReady`) and listing it as a dep, so the effect runs when the api becomes available. I had this exact information in the file I'd already read but didn't translate the pattern across.
+- **Correct behavior**: When applying view state (column visibility / sort / filters) to AG Grid from a page-level effect, drive it with a `useState` `gridReady` flag set inside `onGridReady`, NOT a ref. Mirror the sales-order pattern verbatim: import `applyViewColumnVisibility` / `applyViewSorting` / `applyViewAndTabFilters` / `buildFilterModelFromView` / `resetColumnVisibilityForDefaultView` / `getEntityConfig` from `@daxwell/ui/components/views-manager`, run a `setTimeout(100)` inside the effect, and pass `{ getColumnDefinitionName, columnMapping }` to every helper. Use `<ViewsManagerSlot>` ONLY for popover UI (inside `customQueriesContent`) — never as a page-level orchestrator. Its internal effect is unreliable for that purpose because of the ref-not-a-dep race.
+
+### CR-007 — Used hardcoded RecordType enum as the source of truth for entity/transaction subclass lists
+- **Date**: 2026-05-07
+- **Status**: Active (count = 1)
+- **Category**: assumption-error
+- **Mode**: fix
+- **What happened**: While fixing the "Total Fields" empty cells on the Transaction/Entity tabs, I assumed `RecordType.getByRecordCategory(RecordCategory.TRANSACTION)` was the right place to read the list of transaction subclasses. The user pointed out that the canonical list lives in the backend's `getAllClassFields` response — specifically each parent class entry has a `subclasses: string[]`. The hardcoded enum is broader than the backend's actual subclass set and includes types like Event/Quote that aren't true subclasses, so the UI showed "Transaction (15)" while the backend says there are only 13.
+- **Root cause**: I trusted a frontend-only constants enum over a backend query that already encodes the same information authoritatively. When the frontend has a constants file AND a query that returns the same data, the query is the source of truth; the constants are at risk of drift.
+- **Correct behavior**: When a list of entity types/subclasses is needed and a backend query already returns it (even if returning only the names), use the query. Keep frontend constants only for things the backend can't express (e.g., display-only icon mapping, not the membership of the set). For this codebase specifically: parent class entries from `getAllClassFields` carry `subclasses` — use that for entity/record-type tabs.
+
+### CR-006 — Conflated "popup open" with "popup hovered" when activating the sidebar icon
+- **Date**: 2026-05-04
+- **Status**: Active (count = 1)
+- **Category**: assumption-error
+- **Mode**: fix
+- **What happened**: User asked for the collapsed sidebar icon to highlight in primary/active color when its flyout popup was open. I keyed the active state off `flyoutOpen`, which becomes true the instant the cursor enters the icon (because hover is what opens the popup). Result: the icon flipped to active immediately on icon hover — there was no normal hover stage. User clarified the desired behavior: icon hover should keep the existing grey hover; only when the cursor moves *into the popup itself* should the icon switch to active.
+- **Root cause**: I treated "popup is open" and "cursor is on popup" as the same signal. They're not. The popup opens on icon-hover, so during the early icon-hover phase the popup is open *but the cursor is on the icon*, not on the popup. A correct implementation needs a separate `panelHovered` flag driven by the panel's own `mouseenter`/`mouseleave`, distinct from the open/close lifecycle.
+- **Correct behavior**: For "highlight trigger when popup is being interacted with" patterns, never key the trigger's active state off the popup's open/close state. Track a dedicated `panelHovered`/`menuFocused` flag set on the panel's own pointer events (or focus events for keyboard), and use that for the active styling. Open/close is the right signal for `aria-expanded`, but the visual emphasis on the trigger should follow where the cursor actually is.
+
+### CR-005 — Built mockup of wrong zone when user pointed at a screenshot containing both nav and a list page
+- **Date**: 2026-04-30
+- **Status**: Active (count = 1)
+- **Category**: skipped-zone
+- **Mode**: mockup
+- **What happened**: User attached a screenshot showing the expanded floating nav (left) AND the Source System list page (right) and said "create a premium mockup for this view". I built a Source System list-view mockup. User clarified that they wanted the floating nav (left) — not the list view.
+- **Root cause**: The screenshot contained two distinct surfaces but I picked the wrong one without asking. I defaulted to the list view because it was the larger / more "page-like" surface, but the user's framing ("this view") referred to the nav rail. When a screenshot frames multiple surfaces, the right move is to ask one clarifying question before producing 800 lines of HTML.
+- **Correct behavior**: When a screenshot contains 2+ candidate zones (e.g., sidebar + page body), and the user's text doesn't pin one, ask one short question: "the nav rail or the list page?" before writing. Cost of asking once << cost of building the wrong thing. Especially true when the assistant can see the user is currently iterating on the nav (recent turns were about nav-floating-flyout / popup styling).
+
+---
+
 ### CR-004 — Backend permission gate change introduced row-flooding regression because `TOTAL=true` overrides field-level removals
 - **Date**: 2026-04-27
 - **Status**: Active (count = 1)

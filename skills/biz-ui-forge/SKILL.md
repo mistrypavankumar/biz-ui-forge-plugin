@@ -640,7 +640,9 @@ Act like a **senior security/access-control reviewer**. Audit a complete page (t
 
 For the supplied entry component, traverse the render tree (parent → tabs → cards → tables → modals → child presentational files → shared cell renderers) and inspect every UI element that displays or acts on data from a GraphQL query, REST fetch, Redux selector, or Apollo cache read. For each, verify it is gated by the correct helper.
 
-**Canonical helper source — read this folder first every run.** All permission helpers live in `packages/utils/src/permission-checks/` (re-exported from `@daxwell/utils`). Open the folder before auditing so the catalog stays in sync if helpers are added or renamed:
+**Canonical helper source — read BOTH folders first every run.** Permission helpers live in two parallel folders under `@daxwell/utils`. Treat them as siblings, not duplicates. Open both before auditing so the catalog stays in sync if helpers are added or renamed.
+
+**Folder 1: `packages/utils/src/permission-checks/`** — static (non-reactive) helpers, safe outside React render. Imported as `@daxwell/utils/permission-checks`.
 
 - `capability-permission-checks.ts` — `canRead`, `canCreate`, `canUpdate`, `canDelete`, `canReadAny`, `canReadField`, `canCreateField`, `canUpdateField`, `canDeleteField`, `canReadAnyField`, `canReadAllFields`, `canCreateAnyField`, `canCreateAllFields`, `canUpdateAnyField`, `canUpdateAllFields`
 - `record-permission-checks.ts` — record-scoped variants when ownership matters: `canUpdateRecord`, `canDeleteRecord`, `canCreateRecordField`, `canUpdateRecordField`, `canReadRecordField`
@@ -649,7 +651,20 @@ For the supplied entry component, traverse the render tree (parent → tabs → 
 - `base-checks.ts` — `canAccess` (low-level — should not appear in UI code; flag as anti-pattern if found)
 - `types.ts` — `CapabilityArgs`, `CapabilityFieldArgs`, `RecordArgs`, `RecordFieldArgs`, `Ownable`
 
-If a helper exists in this folder that is not listed in the catalog table below, treat its presence as authoritative — re-read the folder and prefer the project's actual export over the table. The catalog below is a quick reference, not a closed list.
+**Folder 2: `packages/utils/src/permission-hooks/`** — reactive React hooks that wrap each static helper in `useAppSelector(() => canX(...))` so components re-render when the permission slice updates. Imported as `@daxwell/utils/permission-hooks`. Per LR-041, this is equally canonical — a page that uses `useCanRead('X')` is gated as correctly as one that uses `canRead('X')`.
+
+- `use-can-capability.ts` — `useCanRead`, `useCanCreate`, `useCanUpdate`, `useCanDelete`, `useCanReadAny`
+- `use-can-capability-field.ts` — `useCanReadField`, `useCanCreateField`, `useCanUpdateField`, `useCanDeleteField`, `useCanReadAnyField`, `useCanReadAllFields`, `useCanCreateAnyField`, `useCanCreateAllFields`, `useCanUpdateAnyField`, `useCanUpdateAllFields`
+- `use-can-record.ts` — record-scoped hook variants
+- `use-can-file.ts` — file-scoped hook variants
+- `use-permitted-fields.ts` — bulk field-set lookups (`usePermittedFieldSet`, `useFieldPermissions`)
+
+**When to expect each form** (per LR-041):
+- Inside JSX / function-component render body → **hook form** (`useCan*`) is preferred. Static `canX` here captures a snapshot and won't re-render on permission hydration / sandbox toggle / role change.
+- Inside event handlers, `useCallback` bodies, `useMemo` bodies that compute non-reactive values, AG Grid `cellRenderer` bodies, route-resolver utils, redux thunks → **static form** (`canX`). Hooks are illegal here.
+- AG Grid `colDef` factory inside a `useMemo` → static `canRead*`/`canReadField` via `colIf(...)` is the established pattern.
+
+If a helper exists in either folder that is not listed in the catalog table below, treat its presence as authoritative — re-read the folder and prefer the project's actual export over the table. The catalog below is a quick reference, not a closed list. Both forms count as gates; recognize whichever appears.
 
 Catalog of helpers (all from `@daxwell/utils`):
 

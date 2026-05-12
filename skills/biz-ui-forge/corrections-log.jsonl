@@ -61,3 +61,15 @@
 {"ts":"2026-04-29T14:47:42","prompt":"remove this Run pnpm install --frozen-lockfile\nError: An error occurred trying to start process '/usr/bin/bash' with working directory '/home/runner/work/daxwell-scm-client/daxwell-scm-client/amplify'. No such file or directory\n"}
 {"ts":"2026-04-29T17:08:07","prompt":"/biz-ui-forge --add-skill \"add a new mode --permission-check, which will checks a complement provided page for each component like column, button, card, text which is coming from query should have permissions added like CanRead(), CanReadField, and etc... and if not added in it or missing then at the end give me report and save than under docs/reports so that later we can fix that one by one. report should be more readable for user\"\n"}
 {"ts":"2026-04-29T17:08:36","prompt":"/biz-ui-forge --add-skill \"add a new mode --permission-check, which will checks a complete provided page for each component like column, button, card, text which is coming from query should have permissions added like CanRead(), CanReadField, and etc... and if not added in it or missing then at the end give me report and save than under docs/reports so that later we can fix that one by one. report should be more readable for user\"\n"}
+{"ts":"2026-04-30T20:42:21","prompt":"/biz-ui-forge --mockup [Image #1] \"create a mockup for popup of floating navigation item, it should be primium and morden\"\n"}
+{"ts":"2026-05-04T12:33:24","prompt":"/biz-ui-forge --fix [Image #13] why still not able to see file manger nav even i given read file permission and route permission\n"}
+{"ts":"2026-05-07T11:40:56","prompt":"/biz-ui-forge --check apps/scm/src/sections/user-management/role/grids/object-permissions-grid.tsx, this like sometime we have permission but still not show in the ui and after reload it shows, and sometime we don't have permission but still shows in the ui.\n"}
+{"ts":"2026-05-07T14:56:03","prompt":"/biz-ui-forge --suggest how we can persist state in global level so that any page stage changes like from list page user filter and opened detail page. and once comeback then should be on previous stage\n"}
+{"ts":"2026-05-07T14:56:05","prompt":"/biz-ui-forge --suggest how we can persist state in global level so that any page stage changes like from list page user filter and opened detail page. and once comeback then should be on previous state\n"}
+{"ts":"2026-05-08T13:37:49","prompt":"/biz-ui-forge --fix still not work as it works in sales order list view page\n"}
+{"ts":"2026-05-08T14:16:31","prompt":"/biz-ui-forge --fix still not working, look into sales order list page\n"}
+{"ts":"2026-05-11T15:02:58","prompt":"/biz-ui-forge --fix [Image #12] still not fixed\n"}
+{"ts":"2026-05-11T15:52:09","prompt":"/biz-ui-forge --fix [Image #6] revert this back again\n"}
+{"ts":"2026-05-11T15:56:02","prompt":"/biz-ui-forge --fix [Image #7] remove this filter and show text like Users\n"}
+{"ts":"2026-05-11T16:49:54","prompt":"/biz-ui-forge --fix still not able to see permission sandbox in supplier app\n"}
+{"ts":"2026-05-11T16:54:40","prompt":"/biz-ui-forge --fix why still not able to see permisison sandbox [Image #15]\n"}

@@ -6,6 +6,68 @@ Rules are promoted here from `corrections-log.md` when they meet promotion crite
 
 ---
 
+### LR-046 — Use `ActionButton` for every new button in fix/implement mode
+- **Promoted from**: User explicit instruction (2026-05-18)
+- **Category**: wrong-component
+- **Modes**: fix, implement, redesign, build
+- **Rule**: When creating or replacing any clickable button in fix/implement mode, import `ActionButton` from `@daxwell/ui/components/custom-buttons/action-button` (or its barrel `@daxwell/ui/components/custom-buttons`) instead of building a raw `<Button>`, `<Box component="button">`, or hand-rolled clickable. Pick `actionType` from the canonical list (`create`, `edit`, `save`, `delete`, `cancel`, `approve`, `release`, `assign`, `upload`, etc.); use `actionType="custom"` with `customLabel` only when no semantic action fits. Drive loading via the `loading` prop (not a manual spinner), drive permission gating via `shouldRender` (per LR-045), and route icons through `startIcon` / `endIcon` / `centerIcon` so the platform handles sizing, hover, focus-visible, and disabled-tooltip behavior. For icon-only buttons use `centerIcon` (renders the 36×36 square), and override size only via `sx={{ minWidth, width, height }}` when the slot truly demands a different dimension.
+- **Why**: `ActionButton` is the project's canonical button — it owns the action label catalog, the loading/spinner UX, the platform tooltip + disabled-tooltip wrapper, the focus-visible outline, and the soft/contained/outlined variant rules. Hand-rolled `<Box component="button">` blocks (as found across the restore modal pre-refactor) skip all of that, drift visually from the rest of the app, and re-introduce work every time hover/focus/loading needs a polish pass. Centralizing on `ActionButton` keeps every new button consistent with the existing `NewRecordButton` / row-action / toolbar idioms and stops button styling from forking per feature. See [[LR-045]] for how `shouldRender` integrates with permission gates, and [[LR-035]] for the broader "use the shared package, not a local re-implementation" stance.
+
+### LR-045 — Wire permission gates when fixing or implementing UI, never as an afterthought
+- **Promoted from**: User explicit instruction (2026-05-14)
+- **Category**: skipped-zone
+- **Modes**: fix, implement, redesign, build
+- **Rule**: Every time you add or change a UI surface — page, modal, card, row action, toolbar button, editable input, file action — also wire the matching permission gate from `@daxwell/utils` in the same change. Pick the helper class by surface type: `canRead*`/`useCanRead*` for visible reads, `canCreate*`/`useCanCreate*` for create entry points, `canUpdate*`/`useCanUpdate*` for edit surfaces and editable inputs, `canDelete*`/`useCanDelete*` for destructive actions, `canCreateFile`/`canUpdateFile`/`canDeleteFile` for file actions, `canReadRecord*`/`canDeleteRecord` when ownership scope applies. Static vs hook form follows LR-041 (hook in JSX bodies, static in cellRenderers/handlers/memos). New action surfaces inherit the page's existing `canDelete*` / `canUpdate*` flag — don't expose a button to a role that can't perform the underlying mutation.
+- **Why**: Permission wiring is part of the feature, not a post-merge audit. Every recent task (role list, equipment-groups list, restore toggle) had to be re-touched because gates were skipped during the original fix/implement pass. Doing it up front avoids the rework and keeps the UI from offering actions the backend will reject. See [[LR-041]] for the static/hook split and [[LR-040]] for the modal/path map surfaces that also need permission entries.
+- **Promoted from**: User explicit instruction (2026-05-13, screenshot of the product/packaged-product Actions column)
+- **Category**: style-drift
+- **Modes**: all
+- **Rule**: Every row-level delete affordance inside an AG Grid Actions column must use the same visual shape — no bespoke variations per page. The canonical recipe (already shipped in `apps/scm/src/sections/product/product/product-list-page/view/product-list-client.tsx` and `apps/scm/src/sections/product/packaged-product/packaged-product-list-page/view/packaged-product-list-client.tsx`):
+  ```tsx
+  <Tooltip title="Delete <entity name>">
+    <IconButton
+      size="small"
+      onClick={(e) => {
+        e.stopPropagation();
+        entityDelete.requestDelete({ id: row.id, name: row.name ?? '' });
+      }}
+      sx={{
+        width: 28,
+        height: 28,
+        borderRadius: '8px',
+        color: 'text.secondary',
+        '&:hover': {
+          bgcolor: alpha(theme.palette.error.main, 0.12),
+          color: 'error.main',
+        },
+      }}
+    >
+      <LuTrash2 size={16} />
+    </IconButton>
+  </Tooltip>
+  ```
+  Pair with the canonical column shell: `colId: '__actions__'` (per LR-043), `pinned: 'right'`, width/min/max all 90, `sortable: false`, `filter: false`, `resizable: false`, `menuTabs: []`, `suppressHeaderMenuButton: true`, `suppressColumnsToolPanel: true`, `hide: !canDelete<Entity>`, `cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' } as CellStyle`. Click handlers must call `e.stopPropagation()` to avoid triggering the row's view/quick-view click. The delete trigger goes through `useEntitySoftDelete().requestDelete({ id, name })` from `@daxwell/lib/soft-delete` — never a raw mutation call wired up per page. **No alternate visuals**: no `<Button>Delete</Button>`, no full-red filled icon by default, no menu kebab, no inline confirm strip. The muted→red hover transition is intentional — it signals destructive intent only on intent (hover/focus) and stays visually quiet in the row baseline.
+- **Why**: The Actions-column delete pattern has shipped in two pages already (Product list, Packaged Product list) and the user is locking it in as the standard so future pages don't drift into per-page button styles. A consistent muted→red hover affordance (a) keeps the row visually calm at rest — important for dense AG Grid SSRM tables where every row paints a delete control, (b) reserves the strong red color for the user's intent moment (hover/focus) rather than constant visual weight, and (c) lets the `useEntitySoftDelete` hook own all confirm/toast/DELETE_BLOCKED handoff so per-page wiring stays a 5-line drop-in. Deviating means re-implementing confirm flow, hover states, and red-on-hover transitions per page — every variation is a future bug surface and a visual inconsistency users notice immediately when navigating between entities.
+
+### LR-043 — AG Grid action columns must use `colId: '__actions__'`
+- **Promoted from**: User explicit instruction (2026-05-13)
+- **Category**: style-drift
+- **Modes**: all
+- **Rule**: When adding a trailing actions column to an AG Grid list page (delete icon, kebab menu, row-level controls), the `colId` must be the canonical sentinel string `'__actions__'` — not `'actions'`, not `'rowActions'`, not the column's `headerName`. Apply this to every new actions column regardless of which file owns the grid (`*-list-client.tsx`, shared `*-columns.ts`, AG Grid factories under `packages/ui/`).
+- **Why**: The `__actions__` colId is the project-wide sentinel that downstream code keys off — ViewsManager column-visibility logic, default-column reset utilities (`resetColumnVisibilityForDefaultView`), column-state persistence, and any `getColumnDef('__actions__')` lookups assume this exact key. A non-canonical colId silently breaks those integrations: views save without the actions column, resets don't restore it, and visibility toggles target the wrong column. The double-underscore prefix also signals "framework-managed, not user-facing" so it never collides with a backend field name.
+
+### LR-042 — JSDoc on exported functions/types is acceptable when it documents return-condition logic, input-format conventions, or the conceptual operation — refines LR-039
+- **Promoted from**: User explicit instruction (2026-05-13, after CR-016 over-stripping)
+- **Category**: style-drift
+- **Modes**: all
+- **Rule**: LR-039's "default to zero comments" still holds for inline `//` lines, rationale blocks, section banners (`// ── Section ──`), and file-level descriptive `/** ... */` headers. **But JSDoc on exported APIs is acceptable** when each line earns its keep. Specifically these patterns are OK:
+  1. **Return-condition documentation** — when the signature alone doesn't show conditional return shape. Example: `/** Build the detail page path for a routable entity. Returns null for non-routable entities. */` over a function typed `(...): string | null` — the `null` branch's trigger is not visible from `| null`.
+  2. **Input-format conventions** — when the type can't encode the format. Example: `/** Backend table name (PascalCase), e.g. "PurchaseOrder" */` over a `string` field; the casing convention and example are real "how to use" hints.
+  3. **Conceptual operation framing** — when the JSDoc states the entity-level semantics, not just the function name's verb. Example: `/** Resolve a backend tableName (e.g. "PurchaseOrder") to its map entry. */` adds the input format example and frames the operation as a resolution-lookup — both useful for the caller.
+  4. **Optional-field logic notes** — when a `?:` field has fallback or override behavior the type can't show. Example: `/** When set, overrides the /dashboard/{slug}/{id} fallback in getEntityDetailPath. */`.
+  Still **forbidden**: section dividers (`// ── Transactions ──`), file-level prose blocks describing what the file does, JSDoc that purely restates the identifier (e.g. `/** Whether this entity has a detail page. */` over `routable: boolean` adds nothing), and rationale `//` comments above small edits.
+- **Why**: User correction on 2026-05-13 — after I over-stripped function JSDocs from `entity-map.ts` per CR-016 thinking they were "what" comments, the user showed the original JSDocs and said "this type of logical comments will be accepted". The distinction is concrete: JSDoc that adds **information the type system cannot express** (null-return triggers, format conventions, example values, fallback logic) is useful; JSDoc that paraphrases the function name or restates the field type is noise. Pre-response self-check on comment-stripping passes should diff each removed JSDoc against this taxonomy: if it documents a conditional return, an input format, a fallback rule, or a conceptual mapping with an example, **keep it**.
+
 ### LR-041 — Two permission-helper folders exist: `permission-checks/` (static) and `permission-hooks/` (reactive). Use the right one for the call site, and audit BOTH in permission-check mode
 - **Promoted from**: User explicit instruction (2026-05-08)
 - **Category**: incomplete-phase

@@ -73,3 +73,10 @@
 {"ts":"2026-05-11T15:56:02","prompt":"/biz-ui-forge --fix [Image #7] remove this filter and show text like Users\n"}
 {"ts":"2026-05-11T16:49:54","prompt":"/biz-ui-forge --fix still not able to see permission sandbox in supplier app\n"}
 {"ts":"2026-05-11T16:54:40","prompt":"/biz-ui-forge --fix why still not able to see permisison sandbox [Image #15]\n"}
+{"ts":"2026-05-12T11:08:27","prompt":"/biz-ui-forge --fix [Image #4] remove this from modal\n"}
+{"ts":"2026-05-13T08:58:11","prompt":"/biz-ui-forge --fix udpate the apps/supplier/src/layouts/nav-config-floating.tsx, navigation of this supplier app as same as scm app apps/scm/src/layouts/nav-config-floating.tsx. but make sure whatever is present in supplier nav should be same. only make sure naming and style of nav should match\n"}
+{"ts":"2026-05-13T09:09:55","prompt":"/biz-ui-forge --fix above all issues and also make sure in supplier app we don't have GET_DEV_ADMIN_APP_USER_BY_ID, so remove this\n"}
+{"ts":"2026-05-13T16:19:47","prompt":"/biz-ui-forge --fix no need to add comments like what you doing, if you want to write comment when it should be like how we use it or logic behide it\n"}
+{"ts":"2026-05-14T11:38:51","prompt":"/biz-ui-forge --fix quick fix, we don't use softDelete mutation it will be removed from backend, for role list page use mutation DeleteRole {\n    deleteRole(id: null)\n}\n this mutation\n"}
+{"ts":"2026-05-14T12:21:09","prompt":"/biz-ui-forge --fix [Image #2] why i can see these many changes, don't do format eslint for all only do for touched files\n"}
+{"ts":"2026-05-15T10:37:02","prompt":"no need this featuer\n"}
